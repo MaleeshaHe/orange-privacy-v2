@@ -141,6 +141,19 @@ scanQueue.process(async (job) => {
   }
 });
 
+// Redis connection event handlers
+scanQueue.on('error', (error) => {
+  console.error('❌ Redis Queue Error:', error.message);
+});
+
+scanQueue.on('ready', () => {
+  console.log('✅ Redis connection established - Queue is ready');
+});
+
+scanQueue.on('stalled', (job) => {
+  console.warn(`⚠️  Job ${job.id} has stalled`);
+});
+
 // Queue event handlers
 scanQueue.on('completed', (job, result) => {
   console.log(`Job ${job.id} completed with result:`, result);
@@ -202,8 +215,33 @@ const getJobStatus = async (jobId) => {
   }
 };
 
+// Check Redis connection health
+const checkRedisHealth = async () => {
+  try {
+    const client = await scanQueue.client;
+    await client.ping();
+
+    const jobCounts = await scanQueue.getJobCounts();
+
+    return {
+      connected: true,
+      host: process.env.REDIS_HOST || 'localhost',
+      port: process.env.REDIS_PORT || 6379,
+      jobCounts: jobCounts
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      host: process.env.REDIS_HOST || 'localhost',
+      port: process.env.REDIS_PORT || 6379,
+      error: error.message
+    };
+  }
+};
+
 module.exports = {
   scanQueue,
   addScanJob,
-  getJobStatus
+  getJobStatus,
+  checkRedisHealth
 };

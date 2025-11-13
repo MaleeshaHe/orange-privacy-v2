@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 
 const db = require('./models');
 const awsService = require('./services/aws.service');
+const queueService = require('./services/queue.service');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -38,12 +39,31 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
-  });
+app.get('/health', async (req, res) => {
+  try {
+    // Check database
+    await db.sequelize.authenticate();
+    const dbStatus = { connected: true, type: 'MySQL' };
+
+    // Check Redis
+    const redisStatus = await queueService.checkRedisHealth();
+
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      services: {
+        database: dbStatus,
+        redis: redisStatus
+      }
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    });
+  }
 });
 
 // API Routes
@@ -106,6 +126,16 @@ const startServer = async () => {
       console.warn('⚠️  AWS credentials not configured - AWS features disabled');
       console.warn('   To enable AWS features, configure credentials in .env file');
       console.warn('   See backend/.env.example for required variables');
+    }
+
+    // Check Redis connection
+    const redisHealth = await queueService.checkRedisHealth();
+    if (redisHealth.connected) {
+      console.log(`✅ Redis connected: ${redisHealth.host}:${redisHealth.port}`);
+    } else {
+      console.warn('⚠️  Redis connection failed:', redisHealth.error);
+      console.warn('   Background job processing will not work');
+      console.warn('   Configure Redis in .env file or use a hosted Redis service');
     }
 
     // Start server
