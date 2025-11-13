@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Card } from '@/components/ui/Card';
@@ -9,8 +9,10 @@ import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import Progress from '@/components/ui/Progress';
+import { useToast } from '@/components/ui/ToastContainer';
 import { scanJobAPI } from '@/lib/api';
-import { Plus, Search, Clock, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { Plus, Search, Clock, CheckCircle, XCircle, Loader, TrendingUp } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 
 interface ScanJob {
@@ -31,12 +33,13 @@ interface CreateScanForm {
 
 export default function ScansPage() {
   const router = useRouter();
+  const toast = useToast();
   const [scans, setScans] = useState<ScanJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [createModal, setCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [previousScans, setPreviousScans] = useState<ScanJob[]>([]);
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<CreateScanForm>({
     defaultValues: {
@@ -51,10 +54,34 @@ export default function ScansPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const fetchScans = async () => {
+  const fetchScans = useCallback(async () => {
     try {
       const response = await scanJobAPI.getAll({ limit: 50 });
-      setScans(response.data.scanJobs || []);
+      const newScans = response.data.scanJobs || [];
+
+      // Check for status changes and show notifications
+      if (previousScans.length > 0) {
+        newScans.forEach((newScan) => {
+          const oldScan = previousScans.find((s) => s.id === newScan.id);
+          if (oldScan && oldScan.status !== newScan.status) {
+            // Status changed - show notification
+            if (newScan.status === 'completed') {
+              toast.success(
+                'Scan Completed!',
+                `Found ${newScan.matchesFound} match${newScan.matchesFound !== 1 ? 'es' : ''}`
+              );
+            } else if (newScan.status === 'failed') {
+              toast.error('Scan Failed', 'Please try again or contact support');
+            } else if (newScan.status === 'processing') {
+              toast.info('Scan Started', 'Your scan is now processing...');
+            }
+          }
+        });
+      }
+
+      setPreviousScans(newScans);
+      setScans(newScans);
+
       // Clear any previous errors on successful fetch
       if (error) setError('');
     } catch (err: any) {
@@ -62,8 +89,10 @@ export default function ScansPage() {
       if (loading) {
         if (err.code === 'ECONNABORTED') {
           setError('Connection timeout. Please check your internet connection.');
+          toast.error('Connection Timeout', 'Please check your internet connection');
         } else if (err.message === 'Network Error') {
           setError('Cannot connect to server. Please check if the backend is running.');
+          toast.error('Connection Error', 'Cannot connect to server');
         } else {
           setError('Failed to load scans. Retrying...');
         }
@@ -74,20 +103,22 @@ export default function ScansPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [previousScans, error, loading, toast]);
 
   const onSubmit = async (data: CreateScanForm) => {
     try {
       setCreating(true);
       setError('');
       await scanJobAPI.create(data);
-      setSuccess('Scan job created successfully!');
+
+      toast.success('Scan Created!', 'Your scan has been queued and will start shortly');
       setCreateModal(false);
       reset();
       fetchScans();
-      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create scan');
+      const errorMessage = err.response?.data?.error || 'Failed to create scan';
+      setError(errorMessage);
+      toast.error('Scan Creation Failed', errorMessage);
     } finally {
       setCreating(false);
     }
@@ -116,6 +147,40 @@ export default function ScansPage() {
     return variants[status] || 'default';
   };
 
+  const getScanProgress = (scan: ScanJob): number => {
+    if (scan.status === 'completed') return 100;
+    if (scan.status === 'failed' || scan.status === 'cancelled') return 0;
+    if (scan.status === 'queued') return 10;
+
+    // For processing status, estimate progress based on time
+    if (scan.status === 'processing' && scan.startedAt) {
+      const startTime = new Date(scan.startedAt).getTime();
+      const now = Date.now();
+      const elapsed = now - startTime;
+
+      // Estimate: assume scan takes ~5 minutes average
+      const estimatedDuration = 5 * 60 * 1000; // 5 minutes in ms
+      const progress = Math.min(90, 10 + (elapsed / estimatedDuration) * 80);
+      return Math.round(progress);
+    }
+
+    return 0;
+  };
+
+  const getProgressVariant = (status: string): 'primary' | 'success' | 'warning' | 'error' => {
+    switch (status) {
+      case 'completed':
+        return 'success';
+      case 'failed':
+      case 'cancelled':
+        return 'error';
+      case 'processing':
+        return 'primary';
+      default:
+        return 'warning';
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-8 flex items-center justify-between">
@@ -132,25 +197,30 @@ export default function ScansPage() {
       </div>
 
       {error && (
-        <div className="mb-6">
+        <div className="mb-6 animate-fade-in">
           <Alert variant="error" onClose={() => setError('')}>
             {error}
           </Alert>
         </div>
       )}
 
-      {success && (
-        <div className="mb-6">
-          <Alert variant="success" onClose={() => setSuccess('')}>
-            {success}
-          </Alert>
-        </div>
-      )}
-
       {/* Scans List */}
       {loading ? (
-        <div className="text-center py-12">
-          <p className="text-gray-600">Loading scans...</p>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} padding="none">
+              <div className="p-6 animate-pulse">
+                <div className="flex items-start space-x-4">
+                  <div className="rounded-full bg-gray-200 h-10 w-10" />
+                  <div className="flex-1 space-y-3">
+                    <div className="h-6 bg-gray-200 rounded w-1/4" />
+                    <div className="h-4 bg-gray-200 rounded w-1/2" />
+                    <div className="h-4 bg-gray-200 rounded w-3/4" />
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
       ) : scans.length === 0 ? (
         <Card className="text-center py-12">
@@ -166,8 +236,13 @@ export default function ScansPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {scans.map((scan) => (
-            <Card key={scan.id} padding="none">
+          {scans.map((scan, index) => (
+            <Card
+              key={scan.id}
+              padding="none"
+              className="animate-fade-in"
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
               <div className="p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4">
@@ -181,6 +256,19 @@ export default function ScansPage() {
                           {scan.status}
                         </Badge>
                       </div>
+                      {/* Progress Indicator for processing/queued scans */}
+                      {(scan.status === 'processing' || scan.status === 'queued') && (
+                        <div className="mb-4">
+                          <Progress
+                            value={getScanProgress(scan)}
+                            variant={getProgressVariant(scan.status)}
+                            animated={scan.status === 'processing'}
+                            showLabel
+                            label={scan.status === 'queued' ? 'Queued' : 'Processing'}
+                          />
+                        </div>
+                      )}
+
                       <div className="text-sm text-gray-600 space-y-1">
                         <p>
                           <span className="font-medium">Created:</span>{' '}
@@ -202,10 +290,17 @@ export default function ScansPage() {
                           <span className="font-medium">Confidence Threshold:</span>{' '}
                           {scan.confidenceThreshold}%
                         </p>
-                        <p>
-                          <span className="font-medium">Matches Found:</span>{' '}
-                          {scan.matchesFound}
-                        </p>
+                        {scan.status === 'completed' && (
+                          <p className="flex items-center gap-1">
+                            <span className="font-medium">Matches Found:</span>{' '}
+                            <span className="text-orange-600 font-semibold">
+                              {scan.matchesFound}
+                            </span>
+                            {scan.matchesFound > 0 && (
+                              <TrendingUp className="h-4 w-4 text-orange-600" />
+                            )}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
