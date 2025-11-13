@@ -132,8 +132,8 @@ const startServer = async () => {
       console.warn(`   Current config: ${redisHealth.host}:${redisHealth.port}${process.env.REDIS_PASSWORD ? ' (with auth)' : ' (no auth)'}`);
     }
 
-    // Start server
-    app.listen(PORT, () => {
+    // Start server with keepalive configuration
+    const server = app.listen(PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
@@ -147,6 +147,18 @@ const startServer = async () => {
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
       `);
+    });
+
+    // Configure server timeouts and keepalive
+    // Increase timeout for long-running operations (like scans)
+    server.timeout = 120000; // 120 seconds (2 minutes)
+    server.keepAliveTimeout = 65000; // 65 seconds (greater than default load balancer timeout)
+    server.headersTimeout = 66000; // Slightly more than keepAliveTimeout
+
+    // Enable TCP keepalive
+    server.on('connection', (socket) => {
+      socket.setKeepAlive(true, 60000); // Enable keepalive with 60s initial delay
+      socket.setTimeout(120000); // Socket timeout 120s
     });
   } catch (error) {
     console.error('Failed to start server:', error);

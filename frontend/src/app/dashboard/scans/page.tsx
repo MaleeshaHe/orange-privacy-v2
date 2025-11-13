@@ -55,8 +55,22 @@ export default function ScansPage() {
     try {
       const response = await scanJobAPI.getAll({ limit: 50 });
       setScans(response.data.scanJobs || []);
+      // Clear any previous errors on successful fetch
+      if (error) setError('');
     } catch (err: any) {
-      setError('Failed to load scans');
+      // Only show error on initial load, not during polling
+      if (loading) {
+        if (err.code === 'ECONNABORTED') {
+          setError('Connection timeout. Please check your internet connection.');
+        } else if (err.message === 'Network Error') {
+          setError('Cannot connect to server. Please check if the backend is running.');
+        } else {
+          setError('Failed to load scans. Retrying...');
+        }
+      } else {
+        // During polling, just log the error without displaying to user
+        console.error('Failed to fetch scans during polling:', err.message);
+      }
     } finally {
       setLoading(false);
     }
