@@ -3,7 +3,7 @@ const { generateToken } = require('../utils/jwt.util');
 
 const register = async (req, res) => {
   try {
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, biometricConsentGiven } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
@@ -16,7 +16,9 @@ const register = async (req, res) => {
       email,
       password,
       firstName,
-      lastName
+      lastName,
+      biometricConsentGiven: biometricConsentGiven || false,
+      biometricConsentGivenAt: biometricConsentGiven ? new Date() : null
     });
 
     // Generate token

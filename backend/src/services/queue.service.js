@@ -4,13 +4,40 @@ const awsService = require('./aws.service');
 const webCrawlerService = require('./webCrawler.service');
 const socialMediaService = require('./socialMedia.service');
 
+// Create Redis configuration
+const redisConfig = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: parseInt(process.env.REDIS_PORT) || 6379,
+  maxRetriesPerRequest: null, // Required for Bull
+  enableReadyCheck: false,
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  }
+};
+
+// Add password if provided
+if (process.env.REDIS_PASSWORD && process.env.REDIS_PASSWORD.trim() !== '') {
+  redisConfig.password = process.env.REDIS_PASSWORD;
+}
+
+// Enable TLS for hosted Redis services (Upstash, Redis Cloud, etc.)
+// Can be explicitly set via REDIS_TLS env var or auto-detected
+const explicitTLS = process.env.REDIS_TLS === 'true';
+const hostedRedisIndicators = ['upstash.io', 'redislabs.com', 'redis.cloud', 'amazonaws.com'];
+const isHostedRedis = hostedRedisIndicators.some(domain => redisConfig.host.includes(domain)) || redisConfig.port !== 6379;
+const isLocalhost = redisConfig.host.includes('localhost') || redisConfig.host.includes('127.0.0.1');
+
+if ((explicitTLS || (isHostedRedis && !isLocalhost)) && !isLocalhost) {
+  redisConfig.tls = {
+    rejectUnauthorized: false // Some hosted services use self-signed certificates
+  };
+  console.log('📡 TLS enabled for Redis connection');
+}
+
 // Create scan queue
 const scanQueue = new Queue('scan-jobs', {
-  redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: process.env.REDIS_PORT || 6379,
-    password: process.env.REDIS_PASSWORD || undefined
-  }
+  redis: redisConfig
 });
 
 // Process scan jobs
@@ -141,6 +168,19 @@ scanQueue.process(async (job) => {
   }
 });
 
+// Redis connection event handlers
+scanQueue.on('error', (error) => {
+  console.error('❌ Redis Queue Error:', error.message);
+});
+
+scanQueue.on('ready', () => {
+  console.log('✅ Redis connection established - Queue is ready');
+});
+
+scanQueue.on('stalled', (job) => {
+  console.warn(`⚠️  Job ${job.id} has stalled`);
+});
+
 // Queue event handlers
 scanQueue.on('completed', (job, result) => {
   console.log(`Job ${job.id} completed with result:`, result);
@@ -202,8 +242,33 @@ const getJobStatus = async (jobId) => {
   }
 };
 
+// Check Redis connection health
+const checkRedisHealth = async () => {
+  try {
+    const client = await scanQueue.client;
+    await client.ping();
+
+    const jobCounts = await scanQueue.getJobCounts();
+
+    return {
+      connected: true,
+      host: process.env.REDIS_HOST || 'localhost',
+      port: process.env.REDIS_PORT || 6379,
+      jobCounts: jobCounts
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      host: process.env.REDIS_HOST || 'localhost',
+      port: process.env.REDIS_PORT || 6379,
+      error: error.message
+    };
+  }
+};
+
 module.exports = {
   scanQueue,
   addScanJob,
-  getJobStatus
+  getJobStatus,
+  checkRedisHealth
 };

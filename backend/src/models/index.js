@@ -39,11 +39,11 @@ db.RefPhoto.belongsTo(db.User, { foreignKey: 'userId' });
 
 // User has many ScanJobs
 db.User.hasMany(db.ScanJob, { foreignKey: 'userId', as: 'scanJobs' });
-db.ScanJob.belongsTo(db.User, { foreignKey: 'userId' });
+db.ScanJob.belongsTo(db.User, { foreignKey: 'userId', as: 'user' });
 
 // ScanJob has many ScanResults
 db.ScanJob.hasMany(db.ScanResult, { foreignKey: 'scanJobId', as: 'results' });
-db.ScanResult.belongsTo(db.ScanJob, { foreignKey: 'scanJobId' });
+db.ScanResult.belongsTo(db.ScanJob, { foreignKey: 'scanJobId', as: 'scanJob' });
 
 // User has many SocialAccounts
 db.User.hasMany(db.SocialAccount, { foreignKey: 'userId', as: 'socialAccounts' });

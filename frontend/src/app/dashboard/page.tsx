@@ -1,143 +1,189 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/lib/store';
+import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
+import { Card } from '@/components/ui/Card';
 import { scanJobAPI, refPhotoAPI } from '@/lib/api';
+import { Image, Scan, FileSearch, AlertCircle } from 'lucide-react';
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuthStore();
-  const [stats, setStats] = useState<any>(null);
-  const [refPhotos, setRefPhotos] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalPhotos: 0,
+    totalScans: 0,
+    activeScans: 0,
+    totalMatches: 0,
+  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-      return;
-    }
+    fetchStats();
+  }, []);
 
-    loadDashboardData();
-  }, [isAuthenticated, router]);
-
-  const loadDashboardData = async () => {
+  const fetchStats = async () => {
     try {
-      const [statsRes, photosRes] = await Promise.all([
-        scanJobAPI.getStats(),
+      const [photosRes, statsRes] = await Promise.all([
         refPhotoAPI.getAll(),
+        scanJobAPI.getStats(),
       ]);
-      setStats(statsRes.data);
-      setRefPhotos(photosRes.data.refPhotos);
+
+      setStats({
+        totalPhotos: photosRes.data.refPhotos?.length || 0,
+        totalScans: statsRes.data.totalScans || 0,
+        activeScans: statsRes.data.activeScans || 0,
+        totalMatches: statsRes.data.totalMatches || 0,
+      });
     } catch (error) {
-      console.error('Failed to load dashboard data:', error);
+      console.error('Failed to fetch stats:', error);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading dashboard...</p>
-      </div>
-    );
-  }
+  const statCards = [
+    {
+      title: 'Reference Photos',
+      value: stats.totalPhotos,
+      icon: Image,
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-100',
+    },
+    {
+      title: 'Total Scans',
+      value: stats.totalScans,
+      icon: Scan,
+      color: 'text-green-600',
+      bgColor: 'bg-green-100',
+    },
+    {
+      title: 'Active Scans',
+      value: stats.activeScans,
+      icon: AlertCircle,
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-100',
+    },
+    {
+      title: 'Total Matches',
+      value: stats.totalMatches,
+      icon: FileSearch,
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-100',
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-primary-600">OrangePrivacy</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">
-                Welcome, {user?.firstName || user?.email}
-              </span>
-              {user?.role === 'admin' && (
-                <a href="/admin" className="text-sm text-primary-600 hover:text-primary-700">
-                  Admin Panel
-                </a>
-              )}
-              <button onClick={handleLogout} className="btn-secondary text-sm">
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <DashboardLayout>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <p className="mt-2 text-gray-600">
+          Welcome back! Here's an overview of your privacy monitoring.
+        </p>
+      </div>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {!user?.biometricConsentGiven && (
-          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-yellow-800">Biometric Consent Required</h3>
-            <p className="mt-2 text-sm text-yellow-700">
-              You must give consent for biometric scanning before using OrangePrivacy features.
-            </p>
-            <a href="/consent" className="mt-3 inline-block btn-primary text-sm">
-              Give Consent
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
+        {statCards.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <Card key={stat.title} padding="md">
+              <div className="flex items-center">
+                <div className={`p-3 rounded-lg ${stat.bgColor}`}>
+                  <Icon className={`h-6 w-6 ${stat.color}`} />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">
+                    {stat.title}
+                  </p>
+                  <p className="text-2xl font-semibold text-gray-900">
+                    {loading ? '...' : stat.value}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Quick Actions
+          </h2>
+          <div className="space-y-3">
+            <a
+              href="/dashboard/photos"
+              className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">
+                    Upload Reference Photo
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Add a new photo to monitor
+                  </p>
+                </div>
+                <Image className="h-5 w-5 text-gray-400" />
+              </div>
+            </a>
+            <a
+              href="/dashboard/scans"
+              className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">Start New Scan</h3>
+                  <p className="text-sm text-gray-600">
+                    Scan the web for your photos
+                  </p>
+                </div>
+                <Scan className="h-5 w-5 text-gray-400" />
+              </div>
+            </a>
+            <a
+              href="/dashboard/results"
+              className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900">View Results</h3>
+                  <p className="text-sm text-gray-600">
+                    Check your scan matches
+                  </p>
+                </div>
+                <FileSearch className="h-5 w-5 text-gray-400" />
+              </div>
             </a>
           </div>
-        )}
+        </Card>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-8">
-          <div className="card">
-            <h3 className="text-lg font-medium text-gray-900">Total Scans</h3>
-            <p className="mt-2 text-3xl font-bold text-primary-600">
-              {stats?.totalScans || 0}
-            </p>
-          </div>
-          <div className="card">
-            <h3 className="text-lg font-medium text-gray-900">Total Matches</h3>
-            <p className="mt-2 text-3xl font-bold text-primary-600">
-              {stats?.totalMatches || 0}
-            </p>
-          </div>
-          <div className="card">
-            <h3 className="text-lg font-medium text-gray-900">Reference Photos</h3>
-            <p className="mt-2 text-3xl font-bold text-primary-600">
-              {refPhotos.length}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-            <div className="space-y-3">
-              <a href="/photos" className="block btn-primary text-center">
-                Manage Reference Photos
-              </a>
-              <a href="/scans" className="block btn-primary text-center">
-                View Scan History
-              </a>
-              <a href="/scans/new" className="block btn-primary text-center">
-                Start New Scan
-              </a>
-              <a href="/social" className="block btn-secondary text-center">
-                Connect Social Media
-              </a>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2 className="text-xl font-bold mb-4">Recent Activity</h2>
-            {stats?.stats?.map((stat: any, index: number) => (
-              <div key={index} className="flex justify-between py-2 border-b">
-                <span className="text-gray-600 capitalize">{stat.status}</span>
-                <span className="font-medium">{stat.count}</span>
+        <Card>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Recent Activity
+          </h2>
+          <div className="space-y-3">
+            {stats.activeScans > 0 ? (
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                <div className="flex items-start">
+                  <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5" />
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-orange-900">
+                      {stats.activeScans} active scan{stats.activeScans !== 1 ? 's' : ''}
+                    </p>
+                    <p className="text-sm text-orange-700">
+                      Scans are currently in progress
+                    </p>
+                  </div>
+                </div>
               </div>
-            ))}
+            ) : (
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                <p className="text-sm text-gray-600">No recent activity</p>
+              </div>
+            )}
           </div>
-        </div>
-      </main>
-    </div>
+        </Card>
+      </div>
+    </DashboardLayout>
   );
 }

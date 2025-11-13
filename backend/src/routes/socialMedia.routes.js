@@ -1,38 +1,25 @@
 const express = require('express');
-const { body } = require('express-validator');
 const socialMediaController = require('../controllers/socialMedia.controller');
 const { authenticate } = require('../middleware/auth.middleware');
-const { validate } = require('../middleware/validation.middleware');
 
 const router = express.Router();
 
-// All routes require authentication
+// OAuth configuration status (no auth required for setup checks)
+router.get('/oauth/status', socialMediaController.getOAuthStatus);
+
+// OAuth initiation routes (require authentication)
+router.get('/facebook/oauth', authenticate, socialMediaController.facebookOAuthInit);
+router.get('/instagram/oauth', authenticate, socialMediaController.instagramOAuthInit);
+
+// OAuth callback routes (no auth required - uses state validation)
+router.get('/facebook/callback', socialMediaController.facebookOAuthCallback);
+router.get('/instagram/callback', socialMediaController.instagramOAuthCallback);
+
+// All other routes require authentication
 router.use(authenticate);
 
 // Get all connected social accounts
 router.get('/', socialMediaController.getSocialAccounts);
-
-// Connect Facebook account
-router.post(
-  '/facebook/connect',
-  [
-    body('accessToken').notEmpty().withMessage('Access token is required'),
-    body('refreshToken').optional()
-  ],
-  validate,
-  socialMediaController.connectFacebook
-);
-
-// Connect Instagram account
-router.post(
-  '/instagram/connect',
-  [
-    body('accessToken').notEmpty().withMessage('Access token is required'),
-    body('refreshToken').optional()
-  ],
-  validate,
-  socialMediaController.connectInstagram
-);
 
 // Sync social account media
 router.post('/:accountId/sync', socialMediaController.syncSocialAccount);

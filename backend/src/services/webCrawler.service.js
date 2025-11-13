@@ -1,5 +1,4 @@
 const axios = require('axios');
-const cheerio = require('cheerio');
 const { ScanJob, ScanResult, RefPhoto } = require('../models');
 const awsService = require('./aws.service');
 const { v4: uuidv4 } = require('uuid');
@@ -7,16 +6,35 @@ const { v4: uuidv4 } = require('uuid');
 /**
  * Web Crawler Service for scanning public web images
  *
- * IMPORTANT: This implementation requires careful consideration of:
- * - Legal compliance (robots.txt, terms of service)
- * - Rate limiting and ethical crawling
- * - Resource management
- * - Privacy regulations
+ * MODES:
+ * 1. Demo Mode - Creates sample scan results for testing (default when no API key configured)
+ * 2. Google Custom Search API - Uses Google's API for reverse image search
  */
 
 class WebCrawlerService {
   constructor() {
     this.userAgent = 'OrangePrivacyBot/1.0 (Privacy Scanner; +https://orangeprivacy.com/bot)';
+
+    // Check Google API configuration
+    const hasApiKey = !!process.env.GOOGLE_API_KEY;
+    const hasSearchEngineId = !!process.env.GOOGLE_SEARCH_ENGINE_ID;
+    this.demoMode = !hasApiKey || !hasSearchEngineId;
+
+    // Log configuration status
+    console.log('\n========================================');
+    console.log('🔍 Web Crawler Service Configuration');
+    console.log('========================================');
+    console.log(`Mode: ${this.demoMode ? '🎭 DEMO MODE' : '🌐 GOOGLE API MODE'}`);
+    console.log(`Google API Key: ${hasApiKey ? '✅ Configured' : '❌ Missing'}`);
+    if (hasApiKey) {
+      const key = process.env.GOOGLE_API_KEY;
+      console.log(`  → Key preview: ${key.substring(0, 10)}...${key.substring(key.length - 4)}`);
+    }
+    console.log(`Google Search Engine ID: ${hasSearchEngineId ? '✅ Configured' : '❌ Missing'}`);
+    if (hasSearchEngineId) {
+      console.log(`  → ID: ${process.env.GOOGLE_SEARCH_ENGINE_ID}`);
+    }
+    console.log('========================================\n');
   }
 
   /**
@@ -29,234 +47,380 @@ class WebCrawlerService {
     const scanJob = await ScanJob.findByPk(scanJobId);
     if (!scanJob) throw new Error('Scan job not found');
 
+    console.log('\n╔════════════════════════════════════════╗');
+    console.log(`║  WEB SCAN STARTED - Job: ${scanJobId.substring(0, 8)}...  ║`);
+    console.log('╚════════════════════════════════════════╝');
+    console.log(`Mode: ${this.demoMode ? '🎭 DEMO MODE' : '🌐 GOOGLE API MODE'}`);
+    console.log(`Confidence Threshold: ${confidenceThreshold}%`);
+    console.log(`Reference Face IDs: ${refPhotoFaceIds.length}`);
+
     try {
-      // Method 1: Use image search APIs (Recommended for MVP)
-      await this.scanUsingImageSearchAPIs(scanJobId, refPhotoFaceIds, confidenceThreshold);
+      if (this.demoMode) {
+        // Demo mode - create sample results for testing
+        console.log('\n💡 Running in Demo Mode');
+        console.log('   → No Google API keys configured');
+        console.log('   → Creating sample results for testing\n');
+        await this.runDemoScan(scanJobId, confidenceThreshold);
+      } else {
+        // Use Google Custom Search API
+        console.log('\n🔍 Running with Google Custom Search API');
 
-      // Method 2: Crawl specific domains (more complex)
-      // await this.crawlSpecificDomains(scanJobId, refPhotoFaceIds, confidenceThreshold);
+        // Check if AWS is configured for face matching
+        const hasAWS = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
+        if (!hasAWS) {
+          console.warn('⚠️  WARNING: AWS credentials not configured!');
+          console.warn('   → Images will be found but cannot be matched');
+          console.warn('   → Configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env\n');
+        }
 
+        await this.scanUsingGoogleSearch(scanJobId, refPhotoFaceIds, confidenceThreshold);
+      }
+
+      console.log('\n✅ Web scan completed successfully');
+      console.log('═══════════════════════════════════════\n');
     } catch (error) {
-      console.error('Web scan error:', error);
+      console.error('\n❌ Web scan failed:');
+      console.error(`   Error: ${error.message}`);
+      console.error(`   Stack: ${error.stack}`);
+      console.error('═══════════════════════════════════════\n');
       throw error;
     }
   }
 
   /**
-   * Method 1: Use Image Search APIs (Recommended for MVP)
-   * Uses search engines and reverse image search
+   * Demo Mode - Creates sample scan results for testing
    */
-  async scanUsingImageSearchAPIs(scanJobId, refPhotoFaceIds, confidenceThreshold) {
+  async runDemoScan(scanJobId, confidenceThreshold) {
+    console.log('Running demo web scan...');
+
     const scanJob = await ScanJob.findByPk(scanJobId);
+
+    // Sample image URLs from public sources (placeholder images)
+    const sampleResults = [
+      {
+        sourceUrl: 'https://example.com/photo1',
+        imageUrl: 'https://via.placeholder.com/400x400/FF6B35/FFFFFF?text=Demo+Match+1',
+        confidence: 92.5,
+      },
+      {
+        sourceUrl: 'https://example.com/photo2',
+        imageUrl: 'https://via.placeholder.com/400x400/004E89/FFFFFF?text=Demo+Match+2',
+        confidence: 88.3,
+      },
+      {
+        sourceUrl: 'https://example.com/photo3',
+        imageUrl: 'https://via.placeholder.com/400x400/F77F00/FFFFFF?text=Demo+Match+3',
+        confidence: 85.7,
+      },
+      {
+        sourceUrl: 'https://example.com/photo4',
+        imageUrl: 'https://via.placeholder.com/400x400/06A77D/FFFFFF?text=Demo+Match+4',
+        confidence: 78.9,
+      },
+      {
+        sourceUrl: 'https://example.com/photo5',
+        imageUrl: 'https://via.placeholder.com/400x400/D62828/FFFFFF?text=Demo+Match+5',
+        confidence: 72.1,
+      },
+    ];
+
+    // Filter by confidence threshold
+    const filteredResults = sampleResults.filter(r => r.confidence >= confidenceThreshold);
+
+    // Create scan results
+    for (const result of filteredResults) {
+      await ScanResult.create({
+        scanJobId,
+        sourceUrl: result.sourceUrl,
+        imageUrl: result.imageUrl,
+        thumbnailUrl: result.imageUrl,
+        confidence: result.confidence,
+        provider: 'demo-mode',
+        providerScore: { similarity: result.confidence, mode: 'demo' },
+        sourceType: 'web',
+        metadata: {
+          demoMode: true,
+          scannedAt: new Date(),
+          note: 'This is a demo result. Configure Google or Bing API keys for real scanning.'
+        }
+      });
+
+      // Update progress
+      await scanJob.update({
+        progress: Math.min(90, scanJob.progress + 15),
+        totalImagesScanned: scanJob.totalImagesScanned + 1
+      });
+
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    console.log(`Demo scan created ${filteredResults.length} sample results`);
+  }
+
+  /**
+   * Scan using Google Custom Search API
+   */
+  async scanUsingGoogleSearch(scanJobId, refPhotoFaceIds, confidenceThreshold) {
+    const { User } = require('../models');
+
+    const scanJob = await ScanJob.findByPk(scanJobId, {
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['firstName', 'lastName', 'email']
+      }]
+    });
+
+    if (!scanJob) {
+      throw new Error('Scan job not found');
+    }
 
     // Get user's reference photos
     const refPhotos = await RefPhoto.findAll({
       where: { userId: scanJob.userId, isActive: true }
     });
 
-    const matches = [];
+    if (refPhotos.length === 0) {
+      throw new Error('No active reference photos found');
+    }
 
-    for (const refPhoto of refPhotos) {
-      try {
-        // Update progress
-        await scanJob.update({
-          progress: Math.min(90, scanJob.progress + 10),
-          totalImagesScanned: scanJob.totalImagesScanned + 1
-        });
+    // Construct search query from user's name
+    let searchQuery = 'person face'; // fallback
+    if (scanJob.user) {
+      const firstName = scanJob.user.firstName || '';
+      const lastName = scanJob.user.lastName || '';
+      const fullName = `${firstName} ${lastName}`.trim();
 
-        // Option A: Use Google Custom Search API
-        // const googleResults = await this.searchGoogleImages(refPhoto.s3Url);
-
-        // Option B: Use Bing Image Search API
-        // const bingResults = await this.searchBingImages(refPhoto.s3Url);
-
-        // Option C: Use TinEye API (reverse image search)
-        // const tinEyeResults = await this.searchTinEye(refPhoto.s3Url);
-
-        // For each found image URL, download and compare faces
-        // const foundImages = googleResults; // or combine results
-
-        // Placeholder: In production, you'd iterate through found images
-        console.log(`Scanning with reference photo: ${refPhoto.id}`);
-
-      } catch (error) {
-        console.error(`Error scanning with reference photo ${refPhoto.id}:`, error);
+      if (fullName) {
+        searchQuery = fullName;
+        console.log(`🔍 Using search query: "${searchQuery}"`);
+      } else {
+        console.log(`⚠️  User has no name set, using fallback query: "${searchQuery}"`);
       }
     }
 
-    return matches;
+    // ==========================================
+    // PHASE 1: Fetch Images from Web Search
+    // ==========================================
+    console.log('\n╔═══════════════════════════════════════════╗');
+    console.log('║  PHASE 1: Fetching Images from Web       ║');
+    console.log('╚═══════════════════════════════════════════╝\n');
+
+    await scanJob.update({ progress: 30 });
+
+    // Search for images using Google Custom Search
+    const searchResults = await this.searchGoogleImages(null, searchQuery);
+
+    if (searchResults.length === 0) {
+      console.log('⚠️  No images found from web search');
+      console.log('   Check your search query or Google API configuration\n');
+      return;
+    }
+
+    console.log(`✅ Phase 1 Complete: ${searchResults.length} images collected from web\n`);
+
+    // ==========================================
+    // PHASE 2: Compare Images with Reference Photos
+    // ==========================================
+    console.log('╔═══════════════════════════════════════════╗');
+    console.log('║  PHASE 2: Comparing with Reference Photos║');
+    console.log('╚═══════════════════════════════════════════╝\n');
+
+    console.log(`📷 Reference Photos: ${refPhotos.length}`);
+    console.log(`🖼️  Web Images: ${searchResults.length}`);
+    console.log(`🎯 Confidence Threshold: ${confidenceThreshold}%\n`);
+
+    await scanJob.update({ progress: 40 });
+
+    let processedCount = 0;
+    let matchCount = 0;
+
+    // Process each found image
+    for (let j = 0; j < searchResults.length; j++) {
+      try {
+        const searchResult = searchResults[j];
+        processedCount++;
+
+        console.log(`─────────────────────────────────────`);
+        console.log(`[${j + 1}/${searchResults.length}] Analyzing Image...`);
+
+        // Extract image URL from search result
+        const imageUrl = searchResult.link;
+        const sourceUrl = searchResult.image?.contextLink || searchResult.link;
+
+        if (!imageUrl) {
+          console.log(`✗ No image URL found, skipping\n`);
+          continue;
+        }
+
+        console.log(`Source: ${sourceUrl.substring(0, 60)}...`);
+
+        // Download and analyze the image (compares with ALL reference photos)
+        const foundMatch = await this.analyzeWebImage(
+          imageUrl,
+          sourceUrl,
+          scanJobId,
+          refPhotoFaceIds,
+          confidenceThreshold
+        );
+
+        if (foundMatch) {
+          matchCount++;
+        }
+
+        // Update progress
+        const progress = 40 + Math.floor((processedCount / searchResults.length) * 50);
+        await scanJob.update({ progress: Math.min(90, progress) });
+
+        console.log(''); // Empty line for readability
+
+      } catch (error) {
+        console.error(`❌ Error processing image: ${error.message}\n`);
+      }
+    }
+
+    console.log(`\n═══════════════════════════════════════`);
+    console.log(`📊 Phase 2 Complete - Scan Summary:`);
+    console.log(`   Web images found: ${searchResults.length}`);
+    console.log(`   Images processed: ${processedCount}`);
+    console.log(`   Matches found: ${matchCount}`);
+    console.log(`═══════════════════════════════════════\n`);
   }
 
   /**
    * Search Google Custom Search API for similar images
-   * Requires: Google API Key and Custom Search Engine ID
-   * https://developers.google.com/custom-search/v1/overview
+   * Requires: GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID
+   * @param {string} imageUrl - Reference image URL (currently not used)
+   * @param {string} searchQuery - Search query (user's full name or fallback)
    */
-  async searchGoogleImages(imageUrl) {
+  async searchGoogleImages(imageUrl, searchQuery = 'person face') {
     const apiKey = process.env.GOOGLE_API_KEY;
     const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+    const TARGET_IMAGES = 20; // Target number of images to fetch
+
+    console.log('\n🔎 Attempting Google Custom Search API connection...');
 
     if (!apiKey || !searchEngineId) {
-      console.warn('Google Custom Search not configured');
+      console.warn('❌ Google Custom Search not configured');
+      console.log(`   API Key: ${apiKey ? 'Present' : 'Missing'}`);
+      console.log(`   Search Engine ID: ${searchEngineId ? 'Present' : 'Missing'}`);
       return [];
     }
 
     try {
-      const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-        params: {
-          key: apiKey,
-          cx: searchEngineId,
-          searchType: 'image',
-          q: imageUrl, // Or use reverse image search
-          num: 10
-        }
-      });
+      console.log('📡 Fetching images from Google Custom Search API...');
+      console.log(`   API Key: ${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`);
+      console.log(`   Search Engine ID: ${searchEngineId}`);
+      console.log(`   Query: "${searchQuery}"`);
+      console.log(`   Target: ${TARGET_IMAGES} images`);
 
-      return response.data.items || [];
-    } catch (error) {
-      console.error('Google Image Search error:', error);
-      return [];
-    }
-  }
+      const allImages = [];
 
-  /**
-   * Search Bing Image Search API
-   * Requires: Bing API Key (Azure Cognitive Services)
-   * https://www.microsoft.com/en-us/bing/apis/bing-image-search-api
-   */
-  async searchBingImages(imageUrl) {
-    const apiKey = process.env.BING_SEARCH_API_KEY;
+      // Google API limit is 10 per request, so we make 2 requests to get ~20 images
+      const requests = [
+        { start: 1, num: 10 },  // First 10 images
+        { start: 11, num: 10 }  // Next 10 images
+      ];
 
-    if (!apiKey) {
-      console.warn('Bing Image Search not configured');
-      return [];
-    }
+      for (let i = 0; i < requests.length; i++) {
+        const { start, num } = requests[i];
 
-    try {
-      const response = await axios.get('https://api.bing.microsoft.com/v7.0/images/search', {
-        headers: {
-          'Ocp-Apim-Subscription-Key': apiKey
-        },
-        params: {
-          q: imageUrl,
-          count: 10,
-          imageType: 'Photo'
-        }
-      });
+        console.log(`   → Request ${i + 1}/2: Fetching images ${start}-${start + num - 1}...`);
 
-      return response.data.value || [];
-    } catch (error) {
-      console.error('Bing Image Search error:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Method 2: Crawl specific domains
-   * More complex, requires careful implementation
-   */
-  async crawlSpecificDomains(scanJobId, refPhotoFaceIds, confidenceThreshold) {
-    // List of domains to crawl (must respect robots.txt)
-    const domains = [
-      'https://example-photo-site.com',
-      // Add more domains as needed
-    ];
-
-    for (const domain of domains) {
-      try {
-        // Check robots.txt first
-        const canCrawl = await this.checkRobotsTxt(domain);
-        if (!canCrawl) {
-          console.log(`Crawling not allowed for ${domain}`);
-          continue;
-        }
-
-        // Crawl the domain
-        await this.crawlDomain(domain, scanJobId, refPhotoFaceIds, confidenceThreshold);
-
-      } catch (error) {
-        console.error(`Error crawling ${domain}:`, error);
-      }
-    }
-  }
-
-  /**
-   * Check robots.txt before crawling
-   */
-  async checkRobotsTxt(domain) {
-    try {
-      const robotsUrl = `${domain}/robots.txt`;
-      const response = await axios.get(robotsUrl, {
-        headers: { 'User-Agent': this.userAgent },
-        timeout: 5000
-      });
-
-      // Parse robots.txt and check if crawling is allowed
-      const robotsTxt = response.data;
-
-      // Simple check - in production use a proper robots.txt parser
-      if (robotsTxt.includes('User-agent: *') && robotsTxt.includes('Disallow: /')) {
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      // If robots.txt doesn't exist, be conservative and don't crawl
-      return false;
-    }
-  }
-
-  /**
-   * Crawl a single domain for images
-   */
-  async crawlDomain(domain, scanJobId, refPhotoFaceIds, confidenceThreshold) {
-    try {
-      const response = await axios.get(domain, {
-        headers: { 'User-Agent': this.userAgent },
-        timeout: 10000
-      });
-
-      const $ = cheerio.load(response.data);
-      const images = [];
-
-      // Find all image elements
-      $('img').each((i, elem) => {
-        const src = $(elem).attr('src');
-        if (src) {
-          // Convert relative URLs to absolute
-          const absoluteUrl = new URL(src, domain).href;
-          images.push(absoluteUrl);
-        }
-      });
-
-      // Process each image found
-      for (const imageUrl of images) {
         try {
-          await this.processImage(imageUrl, domain, scanJobId, refPhotoFaceIds, confidenceThreshold);
+          const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
+            params: {
+              key: apiKey,
+              cx: searchEngineId,
+              searchType: 'image',
+              q: searchQuery,
+              imgSize: 'large',
+              num: num,
+              start: start
+            },
+            timeout: 15000
+          });
+
+          const items = response.data.items || [];
+          allImages.push(...items);
+          console.log(`   ✓ Received ${items.length} images`);
+
+          // Small delay between requests to avoid rate limiting
+          if (i < requests.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+
         } catch (error) {
-          console.error(`Error processing image ${imageUrl}:`, error);
+          // If second request fails, continue with images from first request
+          console.warn(`   ⚠️  Request ${i + 1} failed: ${error.message}`);
+          if (error.response?.status === 429) {
+            console.warn(`   → Rate limit reached, using ${allImages.length} images collected so far`);
+            break;
+          }
         }
       }
 
+      console.log(`✅ Google API fetching complete!`);
+      console.log(`   Total images collected: ${allImages.length}`);
+      console.log(`   Ready to compare with reference photos\n`);
+
+      return allImages;
+
     } catch (error) {
-      console.error(`Error crawling domain ${domain}:`, error);
+      console.error('❌ Google Image Search API Error:');
+      if (error.response) {
+        console.error(`   Status: ${error.response.status}`);
+        console.error(`   Error: ${error.response.data.error?.message || 'Unknown error'}`);
+        console.error(`   Details:`, error.response.data);
+
+        // Common error messages
+        if (error.response.status === 403) {
+          console.error('\n   💡 Possible causes:');
+          console.error('   1. Invalid API key');
+          console.error('   2. API not enabled in Google Cloud Console');
+          console.error('   3. API key restrictions preventing access');
+        } else if (error.response.status === 400) {
+          console.error('\n   💡 Possible causes:');
+          console.error('   1. Invalid Search Engine ID');
+          console.error('   2. Search Engine not configured for image search');
+        }
+      } else {
+        console.error(`   Message: ${error.message}`);
+      }
+      return [];
     }
   }
 
   /**
-   * Process a single image URL
+   * Analyze a web image for face matches using AWS Rekognition
+   * @returns {boolean} - True if a match was found, false otherwise
    */
-  async processImage(imageUrl, sourceUrl, scanJobId, refPhotoFaceIds, confidenceThreshold) {
+  async analyzeWebImage(imageUrl, sourceUrl, scanJobId, refPhotoFaceIds, confidenceThreshold) {
+    let s3Key = null;
+    let foundMatch = false;
+
     try {
+      const scanJob = await ScanJob.findByPk(scanJobId);
+
+      console.log(`📥 Downloading image: ${imageUrl.substring(0, 60)}...`);
+
       // Download the image
       const response = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
         timeout: 10000,
-        maxContentLength: 10 * 1024 * 1024 // 10MB limit
+        maxContentLength: 10 * 1024 * 1024, // 10MB limit
+        headers: {
+          'User-Agent': this.userAgent
+        }
       });
 
+      console.log(`✓ Downloaded (${(response.data.length / 1024).toFixed(2)} KB)`);
+
       // Upload to S3 temporarily
-      const s3Key = `temp/web-scan/${uuidv4()}.jpg`;
+      s3Key = `temp/web-scan/${uuidv4()}.jpg`;
+      console.log(`☁️  Uploading to S3: ${s3Key}`);
+
       await awsService.uploadToS3(
         {
           buffer: Buffer.from(response.data),
@@ -266,41 +430,73 @@ class WebCrawlerService {
         false
       );
 
+      console.log(`🔍 Comparing with reference photos using Rekognition...`);
+
       // Search for faces using Rekognition
       const searchResult = await awsService.searchFacesByImage(s3Key, confidenceThreshold);
 
-      // Check if any matches are in our reference photos
-      for (const match of searchResult.matches) {
-        if (refPhotoFaceIds.includes(match.faceId)) {
-          // Found a match! Create scan result
-          await ScanResult.create({
-            scanJobId,
-            sourceUrl,
-            imageUrl,
-            thumbnailUrl: imageUrl,
-            confidence: match.similarity,
-            provider: 'aws-rekognition',
-            providerScore: match,
-            sourceType: 'web',
-            boundingBox: searchResult.searchedFace,
-            metadata: {
-              crawledAt: new Date(),
-              contentType: response.headers['content-type']
-            }
-          });
+      console.log(`→ Found ${searchResult.matches?.length || 0} face(s) in image`);
 
-          console.log(`Match found! URL: ${sourceUrl}, Confidence: ${match.similarity}%`);
+      // Check if any matches are in our reference photos
+      if (searchResult.matches && searchResult.matches.length > 0) {
+        for (const match of searchResult.matches) {
+          console.log(`  Checking: faceId=${match.faceId.substring(0, 8)}..., similarity=${match.similarity.toFixed(1)}%`);
+
+          if (refPhotoFaceIds.includes(match.faceId)) {
+            // Found a match! Create scan result
+            await ScanResult.create({
+              scanJobId,
+              sourceUrl,
+              imageUrl,
+              thumbnailUrl: imageUrl,
+              confidence: match.similarity,
+              provider: 'aws-rekognition',
+              providerScore: match,
+              sourceType: 'web',
+              boundingBox: searchResult.searchedFace,
+              metadata: {
+                crawledAt: new Date(),
+                contentType: response.headers['content-type'],
+                imageSize: response.data.length
+              }
+            });
+
+            console.log(`✅ MATCH! Confidence: ${match.similarity.toFixed(1)}% | URL: ${sourceUrl.substring(0, 50)}...`);
+            foundMatch = true;
+          } else {
+            console.log(`  ✗ Different person (not in reference photos)`);
+          }
         }
+      } else {
+        console.log(`✗ No faces detected in image`);
       }
 
       // Clean up temporary S3 file
-      await awsService.deleteFromS3(s3Key);
+      if (s3Key) {
+        await awsService.deleteFromS3(s3Key);
+      }
 
       // Update scan job progress
-      await ScanJob.increment('totalImagesScanned', { where: { id: scanJobId } });
+      await scanJob.update({
+        totalImagesScanned: scanJob.totalImagesScanned + 1
+      });
+
+      return foundMatch;
 
     } catch (error) {
-      console.error(`Error processing image ${imageUrl}:`, error);
+      console.error(`❌ Error: ${error.message}`);
+
+      // Clean up S3 file on error
+      if (s3Key) {
+        try {
+          await awsService.deleteFromS3(s3Key);
+        } catch (cleanupError) {
+          console.error(`Failed to cleanup S3: ${cleanupError.message}`);
+        }
+      }
+
+      // Don't throw - continue with other images
+      return false;
     }
   }
 }
