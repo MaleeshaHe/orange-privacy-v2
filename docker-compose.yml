@@ -1,17 +1,19 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: orangeprivacy-postgres
+  mysql:
+    image: mysql:8.0
+    container_name: orangeprivacy-mysql
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: orangeprivacy_dev
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: orangeprivacy_dev
+      MYSQL_USER: orangeprivacy
+      MYSQL_PASSWORD: orangeprivacy
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
     networks:
       - orangeprivacy-network
 
@@ -33,11 +35,11 @@ services:
     environment:
       NODE_ENV: development
       PORT: 5000
-      DB_HOST: postgres
-      DB_PORT: 5432
+      DB_HOST: mysql
+      DB_PORT: 3306
       DB_NAME: orangeprivacy_dev
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_USER: root
+      DB_PASSWORD: root
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: dev_jwt_secret_change_in_production
@@ -52,7 +54,7 @@ services:
       - ./backend:/app
       - /app/node_modules
     depends_on:
-      - postgres
+      - mysql
       - redis
     networks:
       - orangeprivacy-network
@@ -78,7 +80,7 @@ services:
     command: npm run dev
 
 volumes:
-  postgres_data:
+  mysql_data:
   redis_data:
 
 networks:
