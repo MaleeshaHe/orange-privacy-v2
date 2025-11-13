@@ -132,10 +132,15 @@ const startServer = async () => {
     const redisHealth = await queueService.checkRedisHealth();
     if (redisHealth.connected) {
       console.log(`✅ Redis connected: ${redisHealth.host}:${redisHealth.port}`);
+      if (redisHealth.jobCounts) {
+        const totalJobs = Object.values(redisHealth.jobCounts).reduce((a, b) => a + b, 0);
+        console.log(`   Queue status: ${totalJobs} total jobs (${redisHealth.jobCounts.waiting} waiting, ${redisHealth.jobCounts.active} active)`);
+      }
     } else {
       console.warn('⚠️  Redis connection failed:', redisHealth.error);
       console.warn('   Background job processing will not work');
       console.warn('   Configure Redis in .env file or use a hosted Redis service');
+      console.warn(`   Current config: ${redisHealth.host}:${redisHealth.port}${process.env.REDIS_PASSWORD ? ' (with auth)' : ' (no auth)'}`);
     }
 
     // Start server
