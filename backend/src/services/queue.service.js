@@ -1,6 +1,8 @@
 const Queue = require('bull');
 const { ScanJob, RefPhoto, ScanResult } = require('../models');
 const awsService = require('./aws.service');
+const webCrawlerService = require('./webCrawler.service');
+const socialMediaService = require('./socialMedia.service');
 
 // Create scan queue
 const scanQueue = new Queue('scan-jobs', {
@@ -46,30 +48,64 @@ scanQueue.process(async (job) => {
     // Update progress
     await scanJob.update({ progress: 10 });
 
-    // For MVP, we'll simulate web scanning
-    // In production, this would involve:
-    // 1. Crawling public web images (respecting robots.txt)
-    // 2. Using search engines APIs
-    // 3. Checking social media (if configured)
+    // Get Rekognition face IDs for matching
+    const refPhotoFaceIds = refPhotos
+      .filter(photo => photo.rekognitionFaceId)
+      .map(photo => photo.rekognitionFaceId);
+
+    if (refPhotoFaceIds.length === 0) {
+      throw new Error('No indexed faces found in reference photos');
+    }
 
     const results = [];
 
-    // Process social media if scanType includes it
-    if (scanJob.scanType === 'social' || scanJob.scanType === 'combined') {
-      await scanJob.update({ progress: 30 });
-      // Social media scanning will be handled by social media service
-      // For now, we'll skip this in the queue processor
+    // Process web scanning if scanType includes it
+    if (scanJob.scanType === 'web' || scanJob.scanType === 'combined') {
+      await scanJob.update({ progress: 20 });
+      console.log(`Starting web scan for job ${scanJobId}`);
+
+      try {
+        // Call web crawler service
+        await webCrawlerService.scanWeb(
+          scanJobId,
+          refPhotoFaceIds,
+          scanJob.confidenceThreshold
+        );
+        await scanJob.update({ progress: 50 });
+      } catch (error) {
+        console.error('Web scanning error:', error);
+        // Continue with other scan types even if web scan fails
+      }
     }
 
-    // Simulate web scanning for MVP
-    // In production, you would:
-    // 1. Use a web crawler to find images
-    // 2. Upload found images to S3 temporarily
-    // 3. Use Rekognition to compare faces
-    // 4. Store matches in ScanResult table
+    // Process social media if scanType includes it
+    if (scanJob.scanType === 'social' || scanJob.scanType === 'combined') {
+      await scanJob.update({ progress: 60 });
+      console.log(`Starting social media scan for job ${scanJobId}`);
 
-    // For now, we'll just mark as completed with placeholder logic
-    await scanJob.update({ progress: 90 });
+      try {
+        // Get user's social accounts
+        const { SocialAccount } = require('../models');
+        const socialAccounts = await SocialAccount.findAll({
+          where: { userId: scanJob.userId, isActive: true }
+        });
+
+        for (const account of socialAccounts) {
+          await socialMediaService.scanSocialMedia(
+            account.id,
+            refPhotoFaceIds,
+            scanJob.confidenceThreshold,
+            scanJobId
+          );
+        }
+        await scanJob.update({ progress: 90 });
+      } catch (error) {
+        console.error('Social media scanning error:', error);
+        // Continue even if social scan fails
+      }
+    }
+
+    await scanJob.update({ progress: 95 });
 
     // Calculate totals
     const totalMatches = await ScanResult.count({
