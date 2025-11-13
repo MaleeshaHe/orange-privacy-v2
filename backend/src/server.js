@@ -75,28 +75,14 @@ app.use('/api/social-media', socialMediaRoutes);
 app.use('/api/admin', adminRoutes);
 
 // 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+// Error handling middleware
+const { notFound, errorHandler } = require('./middleware/errorHandler.middleware');
 
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
+// 404 handler - must be after all routes
+app.use(notFound);
 
-  // Multer errors
-  if (err.name === 'MulterError') {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'File size too large. Maximum 10MB allowed.' });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-
-  // Default error
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
+// Global error handler - must be last
+app.use(errorHandler);
 
 // Initialize database and start server
 const startServer = async () => {
