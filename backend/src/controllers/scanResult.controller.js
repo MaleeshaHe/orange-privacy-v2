@@ -82,6 +82,14 @@ const updateResultConfirmation = async (req, res) => {
     const { resultId } = req.params;
     const { isConfirmedByUser } = req.body;
 
+    // Validate isConfirmedByUser is a boolean
+    if (typeof isConfirmedByUser !== 'boolean') {
+      return res.status(400).json({
+        error: 'Invalid confirmation value',
+        message: 'isConfirmedByUser must be true or false'
+      });
+    }
+
     // Find result and verify ownership
     const result = await ScanResult.findOne({
       where: { id: resultId },
@@ -95,13 +103,16 @@ const updateResultConfirmation = async (req, res) => {
     });
 
     if (!result) {
-      return res.status(404).json({ error: 'Scan result not found' });
+      return res.status(404).json({
+        error: 'Scan result not found',
+        message: 'This scan result does not exist or you do not have permission to access it'
+      });
     }
 
     await result.update({ isConfirmedByUser });
 
     res.json({
-      message: 'Result confirmation updated',
+      message: `Match ${isConfirmedByUser ? 'confirmed' : 'rejected'} successfully`,
       result: result.toJSON()
     });
   } catch (error) {

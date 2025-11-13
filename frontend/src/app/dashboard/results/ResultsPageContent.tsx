@@ -41,6 +41,7 @@ export default function ResultsPageContent() {
   const [success, setSuccess] = useState('');
   const [selectedResult, setSelectedResult] = useState<ScanResult | null>(null);
   const [imageModal, setImageModal] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   // Filters
   const [filters, setFilters] = useState({
@@ -125,14 +126,20 @@ export default function ResultsPageContent() {
 
   const handleConfirmation = async (resultId: string, isConfirmed: boolean) => {
     try {
+      setError('');
+      setConfirmingId(resultId);
       await scanResultAPI.updateConfirmation(resultId, isConfirmed);
-      setSuccess(`Match ${isConfirmed ? 'confirmed' : 'rejected'}`);
+      setSuccess(`Match ${isConfirmed ? 'confirmed' : 'rejected'} successfully`);
       if (selectedScan) {
-        fetchResults(selectedScan);
+        await fetchResults(selectedScan);
       }
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError('Failed to update confirmation');
+      console.error('Confirmation error:', err);
+      setError(err.response?.data?.error || `Failed to ${isConfirmed ? 'confirm' : 'reject'} match`);
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setConfirmingId(null);
     }
   };
 
@@ -405,10 +412,11 @@ export default function ResultsPageContent() {
                           e.stopPropagation();
                           handleConfirmation(result.id, true);
                         }}
+                        disabled={confirmingId === result.id}
                         className="flex-1 text-xs py-1"
                       >
                         <ThumbsUp className="h-3 w-3 mr-1" />
-                        Confirm
+                        {confirmingId === result.id ? 'Confirming...' : 'Confirm'}
                       </Button>
                       <Button
                         size="sm"
@@ -417,10 +425,11 @@ export default function ResultsPageContent() {
                           e.stopPropagation();
                           handleConfirmation(result.id, false);
                         }}
+                        disabled={confirmingId === result.id}
                         className="flex-1 text-xs py-1"
                       >
                         <ThumbsDown className="h-3 w-3 mr-1" />
-                        Reject
+                        {confirmingId === result.id ? 'Rejecting...' : 'Reject'}
                       </Button>
                     </div>
                   ) : null}
