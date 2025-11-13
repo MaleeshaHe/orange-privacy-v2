@@ -15,7 +15,8 @@ const registerValidation = [
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
   body('firstName').optional().trim().isLength({ min: 1, max: 50 }),
-  body('lastName').optional().trim().isLength({ min: 1, max: 50 })
+  body('lastName').optional().trim().isLength({ min: 1, max: 50 }),
+  body('biometricConsentGiven').optional().isBoolean().withMessage('Biometric consent must be a boolean value')
 ];
 
 const loginValidation = [
