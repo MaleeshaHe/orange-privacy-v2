@@ -14,7 +14,27 @@ const { v4: uuidv4 } = require('uuid');
 class WebCrawlerService {
   constructor() {
     this.userAgent = 'OrangePrivacyBot/1.0 (Privacy Scanner; +https://orangeprivacy.com/bot)';
-    this.demoMode = !process.env.GOOGLE_API_KEY || !process.env.GOOGLE_SEARCH_ENGINE_ID;
+
+    // Check Google API configuration
+    const hasApiKey = !!process.env.GOOGLE_API_KEY;
+    const hasSearchEngineId = !!process.env.GOOGLE_SEARCH_ENGINE_ID;
+    this.demoMode = !hasApiKey || !hasSearchEngineId;
+
+    // Log configuration status
+    console.log('\n========================================');
+    console.log('🔍 Web Crawler Service Configuration');
+    console.log('========================================');
+    console.log(`Mode: ${this.demoMode ? '🎭 DEMO MODE' : '🌐 GOOGLE API MODE'}`);
+    console.log(`Google API Key: ${hasApiKey ? '✅ Configured' : '❌ Missing'}`);
+    if (hasApiKey) {
+      const key = process.env.GOOGLE_API_KEY;
+      console.log(`  → Key preview: ${key.substring(0, 10)}...${key.substring(key.length - 4)}`);
+    }
+    console.log(`Google Search Engine ID: ${hasSearchEngineId ? '✅ Configured' : '❌ Missing'}`);
+    if (hasSearchEngineId) {
+      console.log(`  → ID: ${process.env.GOOGLE_SEARCH_ENGINE_ID}`);
+    }
+    console.log('========================================\n');
   }
 
   /**
@@ -182,12 +202,21 @@ class WebCrawlerService {
     const apiKey = process.env.GOOGLE_API_KEY;
     const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
 
+    console.log('\n🔎 Attempting Google Custom Search API connection...');
+
     if (!apiKey || !searchEngineId) {
-      console.warn('Google Custom Search not configured');
+      console.warn('❌ Google Custom Search not configured');
+      console.log(`   API Key: ${apiKey ? 'Present' : 'Missing'}`);
+      console.log(`   Search Engine ID: ${searchEngineId ? 'Present' : 'Missing'}`);
       return [];
     }
 
     try {
+      console.log('📡 Sending request to Google Custom Search API...');
+      console.log(`   API Key: ${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`);
+      console.log(`   Search Engine ID: ${searchEngineId}`);
+      console.log(`   Query: "person face"`);
+
       const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
         params: {
           key: apiKey,
@@ -200,9 +229,34 @@ class WebCrawlerService {
         timeout: 15000
       });
 
+      const itemCount = response.data.items?.length || 0;
+      console.log(`✅ Google API Response received!`);
+      console.log(`   Status: ${response.status}`);
+      console.log(`   Images found: ${itemCount}`);
+      console.log(`   Queries used: ${response.data.queries?.request?.[0]?.count || 0}`);
+
       return response.data.items || [];
     } catch (error) {
-      console.error('Google Image Search error:', error.response?.data || error.message);
+      console.error('❌ Google Image Search API Error:');
+      if (error.response) {
+        console.error(`   Status: ${error.response.status}`);
+        console.error(`   Error: ${error.response.data.error?.message || 'Unknown error'}`);
+        console.error(`   Details:`, error.response.data);
+
+        // Common error messages
+        if (error.response.status === 403) {
+          console.error('\n   💡 Possible causes:');
+          console.error('   1. Invalid API key');
+          console.error('   2. API not enabled in Google Cloud Console');
+          console.error('   3. API key restrictions preventing access');
+        } else if (error.response.status === 400) {
+          console.error('\n   💡 Possible causes:');
+          console.error('   1. Invalid Search Engine ID');
+          console.error('   2. Search Engine not configured for image search');
+        }
+      } else {
+        console.error(`   Message: ${error.message}`);
+      }
       return [];
     }
   }
