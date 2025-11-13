@@ -91,12 +91,21 @@ const startServer = async () => {
       console.log('Database synced successfully.');
     }
 
-    // Initialize AWS Rekognition collection
-    try {
-      await awsService.initializeRekognitionCollection();
-    } catch (error) {
-      console.error('Warning: Failed to initialize Rekognition collection:', error.message);
-      console.error('Make sure AWS credentials are configured correctly.');
+    // Initialize AWS Rekognition collection (optional in development)
+    const hasAWSCredentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
+
+    if (hasAWSCredentials) {
+      try {
+        await awsService.initializeRekognitionCollection();
+        console.log('AWS Rekognition initialized successfully.');
+      } catch (error) {
+        console.error('Warning: Failed to initialize Rekognition collection:', error.message);
+        console.error('Some features requiring AWS will not be available.');
+      }
+    } else {
+      console.warn('⚠️  AWS credentials not configured - AWS features disabled');
+      console.warn('   To enable AWS features, configure credentials in .env file');
+      console.warn('   See backend/.env.example for required variables');
     }
 
     // Start server
