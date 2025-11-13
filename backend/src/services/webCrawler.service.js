@@ -47,22 +47,42 @@ class WebCrawlerService {
     const scanJob = await ScanJob.findByPk(scanJobId);
     if (!scanJob) throw new Error('Scan job not found');
 
-    console.log(`Starting web scan for job ${scanJobId} (${this.demoMode ? 'DEMO MODE' : 'API MODE'})`);
+    console.log('\n╔════════════════════════════════════════╗');
+    console.log(`║  WEB SCAN STARTED - Job: ${scanJobId.substring(0, 8)}...  ║`);
+    console.log('╚════════════════════════════════════════╝');
+    console.log(`Mode: ${this.demoMode ? '🎭 DEMO MODE' : '🌐 GOOGLE API MODE'}`);
+    console.log(`Confidence Threshold: ${confidenceThreshold}%`);
+    console.log(`Reference Face IDs: ${refPhotoFaceIds.length}`);
 
     try {
       if (this.demoMode) {
         // Demo mode - create sample results for testing
-        console.log('💡 Running in Demo Mode - configure Google Custom Search API for real scanning');
+        console.log('\n💡 Running in Demo Mode');
+        console.log('   → No Google API keys configured');
+        console.log('   → Creating sample results for testing\n');
         await this.runDemoScan(scanJobId, confidenceThreshold);
       } else {
         // Use Google Custom Search API
-        console.log('🔍 Running with Google Custom Search API');
+        console.log('\n🔍 Running with Google Custom Search API');
+
+        // Check if AWS is configured for face matching
+        const hasAWS = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
+        if (!hasAWS) {
+          console.warn('⚠️  WARNING: AWS credentials not configured!');
+          console.warn('   → Images will be found but cannot be matched');
+          console.warn('   → Configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env\n');
+        }
+
         await this.scanUsingGoogleSearch(scanJobId, refPhotoFaceIds, confidenceThreshold);
       }
 
-      console.log(`Web scan completed for job ${scanJobId}`);
+      console.log('\n✅ Web scan completed successfully');
+      console.log('═══════════════════════════════════════\n');
     } catch (error) {
-      console.error('Web scan error:', error);
+      console.error('\n❌ Web scan failed:');
+      console.error(`   Error: ${error.message}`);
+      console.error(`   Stack: ${error.stack}`);
+      console.error('═══════════════════════════════════════\n');
       throw error;
     }
   }
@@ -180,10 +200,20 @@ class WebCrawlerService {
       }
     }
 
-    console.log(`Scanning with ${refPhotos.length} reference photos using Google Search`);
+    console.log(`\n🔄 Processing ${refPhotos.length} reference photo(s)...\n`);
 
-    for (const refPhoto of refPhotos) {
+    let totalImagesFound = 0;
+
+    for (let i = 0; i < refPhotos.length; i++) {
+      const refPhoto = refPhotos[i];
+
       try {
+        console.log(`─────────────────────────────────────`);
+        console.log(`📷 Reference Photo ${i + 1}/${refPhotos.length}`);
+        console.log(`   ID: ${refPhoto.id}`);
+        console.log(`   Face ID: ${refPhoto.rekognitionFaceId || 'Not indexed'}`);
+        console.log(`─────────────────────────────────────`);
+
         // Update progress
         await scanJob.update({
           progress: Math.min(90, scanJob.progress + 10)
@@ -192,14 +222,30 @@ class WebCrawlerService {
         // Search for similar images using Google Custom Search
         const searchResults = await this.searchGoogleImages(refPhoto.signedUrl || refPhoto.s3Url, searchQuery);
 
+        if (searchResults.length === 0) {
+          console.log(`   ⚠️  No images found for this reference photo\n`);
+          continue;
+        }
+
+        totalImagesFound += searchResults.length;
+        console.log(`   📦 Processing ${searchResults.length} found images...\n`);
+
         // Process each found image
-        for (const searchResult of searchResults) {
+        for (let j = 0; j < searchResults.length; j++) {
           try {
+            const searchResult = searchResults[j];
+            console.log(`   [${j + 1}/${searchResults.length}] Processing image...`);
+
             // Extract image URL from search result
             const imageUrl = searchResult.link;
             const sourceUrl = searchResult.image?.contextLink || searchResult.link;
 
-            if (!imageUrl) continue;
+            if (!imageUrl) {
+              console.log(`   ✗ No image URL found, skipping\n`);
+              continue;
+            }
+
+            console.log(`   Source: ${sourceUrl.substring(0, 60)}...`);
 
             // Download and analyze the image
             await this.analyzeWebImage(
@@ -210,15 +256,23 @@ class WebCrawlerService {
               confidenceThreshold
             );
 
+            console.log(''); // Empty line for readability
+
           } catch (error) {
-            console.error(`Error processing search result:`, error.message);
+            console.error(`   ❌ Error processing search result: ${error.message}\n`);
           }
         }
 
       } catch (error) {
-        console.error(`Error scanning with reference photo ${refPhoto.id}:`, error.message);
+        console.error(`❌ Error scanning with reference photo ${refPhoto.id}: ${error.message}\n`);
       }
     }
+
+    console.log(`\n═══════════════════════════════════════`);
+    console.log(`📊 Scan Summary:`);
+    console.log(`   Total images found: ${totalImagesFound}`);
+    console.log(`   Total images scanned: ${scanJob.totalImagesScanned}`);
+    console.log(`═══════════════════════════════════════\n`);
   }
 
   /**
@@ -294,8 +348,12 @@ class WebCrawlerService {
    * Analyze a web image for face matches using AWS Rekognition
    */
   async analyzeWebImage(imageUrl, sourceUrl, scanJobId, refPhotoFaceIds, confidenceThreshold) {
+    let s3Key = null;
+
     try {
       const scanJob = await ScanJob.findByPk(scanJobId);
+
+      console.log(`   📥 Downloading image: ${imageUrl.substring(0, 60)}...`);
 
       // Download the image
       const response = await axios.get(imageUrl, {
@@ -307,8 +365,12 @@ class WebCrawlerService {
         }
       });
 
+      console.log(`   ✓ Downloaded (${(response.data.length / 1024).toFixed(2)} KB)`);
+
       // Upload to S3 temporarily
-      const s3Key = `temp/web-scan/${uuidv4()}.jpg`;
+      s3Key = `temp/web-scan/${uuidv4()}.jpg`;
+      console.log(`   ☁️  Uploading to S3: ${s3Key}`);
+
       await awsService.uploadToS3(
         {
           buffer: Buffer.from(response.data),
@@ -318,12 +380,18 @@ class WebCrawlerService {
         false
       );
 
+      console.log(`   🔍 Searching for faces with Rekognition...`);
+
       // Search for faces using Rekognition
       const searchResult = await awsService.searchFacesByImage(s3Key, confidenceThreshold);
+
+      console.log(`   → Found ${searchResult.matches?.length || 0} face matches`);
 
       // Check if any matches are in our reference photos
       if (searchResult.matches && searchResult.matches.length > 0) {
         for (const match of searchResult.matches) {
+          console.log(`     Checking match: faceId=${match.faceId}, similarity=${match.similarity}%`);
+
           if (refPhotoFaceIds.includes(match.faceId)) {
             // Found a match! Create scan result
             await ScanResult.create({
@@ -343,13 +411,20 @@ class WebCrawlerService {
               }
             });
 
-            console.log(`✓ Match found! URL: ${sourceUrl}, Confidence: ${match.similarity}%`);
+            console.log(`   ✅ MATCH FOUND! URL: ${sourceUrl.substring(0, 50)}..., Confidence: ${match.similarity}%`);
+          } else {
+            console.log(`     ✗ Face not in reference photos (faceId: ${match.faceId})`);
           }
         }
+      } else {
+        console.log(`   ✗ No face matches found in this image`);
       }
 
       // Clean up temporary S3 file
-      await awsService.deleteFromS3(s3Key);
+      if (s3Key) {
+        console.log(`   🗑️  Cleaning up S3: ${s3Key}`);
+        await awsService.deleteFromS3(s3Key);
+      }
 
       // Update scan job progress
       await scanJob.update({
@@ -357,7 +432,17 @@ class WebCrawlerService {
       });
 
     } catch (error) {
-      console.error(`Error analyzing image ${imageUrl}:`, error.message);
+      console.error(`   ❌ Error analyzing image: ${error.message}`);
+
+      // Clean up S3 file on error
+      if (s3Key) {
+        try {
+          await awsService.deleteFromS3(s3Key);
+        } catch (cleanupError) {
+          console.error(`   Failed to cleanup S3 file: ${cleanupError.message}`);
+        }
+      }
+
       // Don't throw - continue with other images
     }
   }
