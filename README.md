@@ -42,7 +42,7 @@ OrangePrivacy allows users to:
 ### Backend
 - **Runtime**: Node.js 18+
 - **Framework**: Express.js
-- **Database**: PostgreSQL 15
+- **Database**: MySQL 8.0
 - **ORM**: Sequelize
 - **Queue**: Redis + Bull
 - **Cloud**: AWS (S3, Rekognition)
@@ -95,7 +95,7 @@ orange-privacy-v2/
 ### Prerequisites
 
 - Node.js 18+ and npm
-- PostgreSQL 15+
+- MySQL 8.0+
 - Redis 7+
 - AWS Account with:
   - S3 bucket
@@ -128,9 +128,9 @@ orange-privacy-v2/
    ```env
    # Database
    DB_HOST=localhost
-   DB_PORT=5432
+   DB_PORT=3306
    DB_NAME=orangeprivacy_dev
-   DB_USER=postgres
+   DB_USER=root
    DB_PASSWORD=your_password
 
    # JWT
@@ -400,7 +400,7 @@ Authorization: Bearer <admin_token>
 
 1. **Provision infrastructure**:
    - EC2 or ECS for application hosting
-   - RDS PostgreSQL for database
+   - RDS MySQL for database
    - ElastiCache Redis for queue
    - S3 for file storage
    - Application Load Balancer
@@ -435,7 +435,7 @@ Authorization: Bearer <admin_token>
 
 ### Environment-Specific Configuration
 
-**Development**: Local PostgreSQL, Redis, mock AWS services
+**Development**: Local MySQL, Redis, mock AWS services
 **Staging**: AWS resources with test data
 **Production**: Full AWS setup with encryption, backups
 
@@ -467,9 +467,10 @@ Authorization: Bearer <admin_token>
 ### Common Issues
 
 **1. Database connection failed**
-- Check PostgreSQL is running
+- Check MySQL is running
 - Verify connection credentials
 - Check network connectivity
+- Ensure database exists (create if needed)
 
 **2. AWS Rekognition errors**
 - Verify AWS credentials

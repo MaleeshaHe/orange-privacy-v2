@@ -132,16 +132,16 @@ aws iam create-access-key --user-name orangeprivacy-app
 
 Save the Access Key ID and Secret Access Key for your `.env` file.
 
-## Step 4: Set up RDS PostgreSQL (Production)
+## Step 4: Set up RDS MySQL (Production)
 
 ```bash
-# Create RDS PostgreSQL instance
+# Create RDS MySQL instance
 aws rds create-db-instance \
   --db-instance-identifier orangeprivacy-db \
   --db-instance-class db.t3.micro \
-  --engine postgres \
-  --engine-version 15.4 \
-  --master-username postgres \
+  --engine mysql \
+  --engine-version 8.0.35 \
+  --master-username admin \
   --master-user-password YOUR_SECURE_PASSWORD \
   --allocated-storage 20 \
   --storage-type gp3 \
