@@ -91,6 +91,7 @@ class EnvironmentValidator {
     this.required('NODE_ENV', 'Application environment (development/production)');
     this.required('PORT', 'Server port number');
     this.required('JWT_SECRET', 'Secret key for JWT token signing (MUST be changed in production)');
+    this.required('ENCRYPTION_KEY', 'Encryption key for OAuth tokens (MUST be at least 32 characters)');
 
     // Database
     this.required('DB_HOST', 'Database host');
@@ -161,6 +162,27 @@ class EnvironmentValidator {
           description: 'JWT_SECRET contains default/example value - SECURITY RISK!',
           severity: 'error',
           recommendation: 'Generate a new secure random secret immediately'
+        });
+      }
+    }
+
+    // Encryption Key strength check (production only)
+    if (process.env.NODE_ENV === 'production') {
+      const encryptionKey = process.env.ENCRYPTION_KEY || '';
+      if (encryptionKey.length < 32) {
+        this.errors.push({
+          variable: 'ENCRYPTION_KEY',
+          description: 'Encryption key is too weak for production',
+          severity: 'error',
+          recommendation: 'Use at least 32 characters with mixed case, numbers, and symbols'
+        });
+      }
+      if (encryptionKey.includes('change_in_production') || encryptionKey === process.env.JWT_SECRET) {
+        this.errors.push({
+          variable: 'ENCRYPTION_KEY',
+          description: 'ENCRYPTION_KEY contains default value or matches JWT_SECRET - SECURITY RISK!',
+          severity: 'error',
+          recommendation: 'Generate a unique secure random key immediately (different from JWT_SECRET)'
         });
       }
     }
