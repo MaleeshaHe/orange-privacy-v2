@@ -8,7 +8,20 @@ import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { socialMediaAPI } from '@/lib/api';
-import { Facebook, Instagram, RefreshCw, Unlink, AlertCircle, Key, ExternalLink, Shield, CheckCircle2, Share2 } from 'lucide-react';
+import {
+  Facebook,
+  Instagram,
+  RefreshCw,
+  Unlink,
+  AlertCircle,
+  ExternalLink,
+  Shield,
+  CheckCircle2,
+  Share2,
+  Settings,
+  Lock,
+  Code,
+} from 'lucide-react';
 
 interface SocialAccount {
   id: string;
@@ -21,6 +34,17 @@ interface SocialAccount {
   createdAt: string;
 }
 
+interface OAuthStatus {
+  facebook: {
+    configured: boolean;
+    missingFields: string[];
+  };
+  instagram: {
+    configured: boolean;
+    missingFields: string[];
+  };
+}
+
 export default function SocialPage() {
   const searchParams = useSearchParams();
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -28,40 +52,27 @@ export default function SocialPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [syncing, setSyncing] = useState<string | null>(null);
-  const [showManualTokenModal, setShowManualTokenModal] = useState<'facebook' | 'instagram' | null>(null);
-  const [accessToken, setAccessToken] = useState('');
   const [connecting, setConnecting] = useState(false);
-  const [oauthConfigured, setOauthConfigured] = useState({ facebook: true, instagram: true });
+  const [oauthStatus, setOauthStatus] = useState<OAuthStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
 
   useEffect(() => {
     fetchAccounts();
+    checkOAuthStatus();
 
     // Check for OAuth callback messages from URL
     const errorParam = searchParams?.get('error');
     const successParam = searchParams?.get('success');
 
     if (errorParam) {
-      const decodedError = decodeURIComponent(errorParam);
-      setError(decodedError);
-
-      // Check if OAuth is not configured
-      if (decodedError.includes('OAuth not configured')) {
-        if (decodedError.includes('Facebook')) {
-          setOauthConfigured(prev => ({ ...prev, facebook: false }));
-        } else if (decodedError.includes('Instagram')) {
-          setOauthConfigured(prev => ({ ...prev, instagram: false }));
-        }
-      }
-
-      // Clear URL params
+      setError(decodeURIComponent(errorParam));
       window.history.replaceState({}, '', '/dashboard/social');
     }
 
     if (successParam) {
       setSuccess(decodeURIComponent(successParam));
-      // Clear URL params
       window.history.replaceState({}, '', '/dashboard/social');
-      fetchAccounts(); // Refresh accounts list
+      fetchAccounts();
     }
   }, [searchParams]);
 
@@ -77,61 +88,35 @@ export default function SocialPage() {
     }
   };
 
+  const checkOAuthStatus = async () => {
+    try {
+      setStatusLoading(true);
+      const response = await socialMediaAPI.getOAuthStatus();
+      setOauthStatus(response.data);
+    } catch (err: any) {
+      console.error('Failed to check OAuth status:', err);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
   const handleOAuthConnect = async (provider: 'facebook' | 'instagram') => {
     try {
       setError('');
       setConnecting(true);
 
-      // Get OAuth URL from backend
-      const response = provider === 'facebook'
-        ? await socialMediaAPI.getFacebookOAuthUrl()
-        : await socialMediaAPI.getInstagramOAuthUrl();
+      const response =
+        provider === 'facebook'
+          ? await socialMediaAPI.getFacebookOAuthUrl()
+          : await socialMediaAPI.getInstagramOAuthUrl();
 
       const { authUrl } = response.data;
 
-      // Redirect to OAuth URL (full page redirect instead of popup for better compatibility)
+      // Redirect to OAuth URL
       window.location.href = authUrl;
-
     } catch (err: any) {
       const errorMessage = err.response?.data?.error || `Failed to initiate ${provider} OAuth`;
       setError(errorMessage);
-
-      // Check if OAuth is not configured
-      if (errorMessage.includes('OAuth not configured')) {
-        if (provider === 'facebook') {
-          setOauthConfigured(prev => ({ ...prev, facebook: false }));
-        } else {
-          setOauthConfigured(prev => ({ ...prev, instagram: false }));
-        }
-      }
-
-      setConnecting(false);
-    }
-  };
-
-  const handleManualTokenConnect = async (provider: 'facebook' | 'instagram') => {
-    if (!accessToken.trim()) {
-      setError('Please enter an access token');
-      return;
-    }
-
-    try {
-      setConnecting(true);
-      setError('');
-
-      if (provider === 'facebook') {
-        await socialMediaAPI.connectFacebook({ accessToken });
-      } else {
-        await socialMediaAPI.connectInstagram({ accessToken });
-      }
-
-      setSuccess(`${provider === 'facebook' ? 'Facebook' : 'Instagram'} account connected successfully!`);
-      setShowManualTokenModal(null);
-      setAccessToken('');
-      await fetchAccounts();
-    } catch (err: any) {
-      setError(err.response?.data?.error || `Failed to connect ${provider} account`);
-    } finally {
       setConnecting(false);
     }
   };
@@ -176,12 +161,15 @@ export default function SocialPage() {
     }
   };
 
+  const isAnyOAuthConfigured =
+    oauthStatus?.facebook.configured || oauthStatus?.instagram.configured;
+
   return (
     <DashboardLayout>
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Social Media Accounts</h1>
         <p className="mt-2 text-gray-600">
-          Connect your social media accounts to scan for photos containing your face.
+          Connect your Facebook and Instagram accounts using secure OAuth authentication.
         </p>
       </div>
 
@@ -197,64 +185,151 @@ export default function SocialPage() {
         </Alert>
       )}
 
-      {/* OAuth Not Configured Warning */}
-      {(!oauthConfigured.facebook || !oauthConfigured.instagram) && (
-        <Card className="mb-6 bg-amber-50 border-amber-200">
+      {/* OAuth Not Configured - Critical Setup Required */}
+      {!statusLoading && !isAnyOAuthConfigured && (
+        <Card className="mb-6 bg-gradient-to-br from-red-50 to-orange-50 border-red-300">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <Settings className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="ml-4 flex-1">
+              <h3 className="text-lg font-semibold text-red-900 mb-2">
+                OAuth Configuration Required
+              </h3>
+              <p className="text-sm text-red-800 mb-4">
+                Social media connections require OAuth authentication to be configured. The administrator needs to set up Facebook and Instagram app credentials.
+              </p>
+
+              <div className="bg-white rounded-lg border border-red-200 p-4 mb-4">
+                <div className="flex items-start mb-3">
+                  <Lock className="h-5 w-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-1">Why OAuth?</h4>
+                    <p className="text-sm text-gray-700">
+                      OAuth is the industry-standard secure authorization protocol. It allows users to grant access without sharing passwords and provides full control over permissions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-semibold text-red-900 mb-2 flex items-center">
+                    <Code className="h-4 w-4 mr-2" />
+                    Setup Instructions
+                  </h4>
+                  <ol className="space-y-2 text-sm text-red-800">
+                    <li className="flex items-start">
+                      <span className="font-bold mr-2">1.</span>
+                      <div>
+                        Create Facebook Developer Apps:
+                        <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                          <li>Visit{' '}
+                            <a
+                              href="https://developers.facebook.com/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline font-medium hover:text-red-900"
+                            >
+                              Facebook for Developers
+                            </a>
+                          </li>
+                          <li>Create a new app (Consumer type)</li>
+                          <li>Add "Facebook Login" product</li>
+                          <li>Add "Instagram Basic Display" product (for Instagram)</li>
+                        </ul>
+                      </div>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="font-bold mr-2">2.</span>
+                      <div>
+                        Configure OAuth Settings:
+                        <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                          <li>Set Valid OAuth Redirect URIs to: <code className="bg-red-100 px-1 rounded text-xs">http://localhost:5000/api/social-media/facebook/callback</code></li>
+                          <li>Copy your App ID and App Secret</li>
+                        </ul>
+                      </div>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="font-bold mr-2">3.</span>
+                      <div>
+                        Update Backend Environment Variables in{' '}
+                        <code className="bg-red-100 px-1 rounded text-xs font-mono">backend/.env</code>:
+                        <div className="bg-gray-900 text-gray-100 rounded p-3 mt-2 text-xs font-mono overflow-x-auto">
+                          <div>FACEBOOK_APP_ID=your_app_id_here</div>
+                          <div>FACEBOOK_APP_SECRET=your_app_secret_here</div>
+                          <div>FACEBOOK_CALLBACK_URL=http://localhost:5000/api/social-media/facebook/callback</div>
+                          <div className="mt-2">INSTAGRAM_CLIENT_ID=your_instagram_app_id</div>
+                          <div>INSTAGRAM_CLIENT_SECRET=your_instagram_app_secret</div>
+                          <div>INSTAGRAM_CALLBACK_URL=http://localhost:5000/api/social-media/instagram/callback</div>
+                        </div>
+                      </div>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="font-bold mr-2">4.</span>
+                      <div>
+                        Restart the backend server:
+                        <div className="bg-gray-900 text-gray-100 rounded p-3 mt-2 text-xs font-mono">
+                          cd backend && npm run dev
+                        </div>
+                      </div>
+                    </li>
+                  </ol>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start">
+                    <AlertCircle className="h-4 w-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-blue-800">
+                      <strong>Need detailed help?</strong> See the complete setup guide at{' '}
+                      <a
+                        href="https://github.com/yourusername/orange-privacy-v2/blob/main/OAUTH_SETUP.md"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline font-medium"
+                      >
+                        OAUTH_SETUP.md
+                      </a>
+                      {' '}in the project root.
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={checkOAuthStatus}
+                  className="mt-2"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Check Configuration
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Partial Configuration Warning */}
+      {!statusLoading && isAnyOAuthConfigured &&
+        (!oauthStatus?.facebook.configured || !oauthStatus?.instagram.configured) && (
+        <Card className="mb-6 bg-amber-50 border-amber-300">
           <div className="flex items-start">
             <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 mr-3 flex-shrink-0" />
             <div className="flex-1">
               <h3 className="text-sm font-medium text-amber-900 mb-1">
-                OAuth Not Configured
+                Partial OAuth Configuration
               </h3>
-              <p className="text-sm text-amber-800 mb-3">
-                {!oauthConfigured.facebook && !oauthConfigured.instagram ? (
-                  'Facebook and Instagram OAuth are not configured. '
-                ) : !oauthConfigured.facebook ? (
-                  'Facebook OAuth is not configured. '
-                ) : (
-                  'Instagram OAuth is not configured. '
-                )}
-                The "Connect" buttons require Facebook Developer app credentials to be set in the backend.
+              <p className="text-sm text-amber-800 mb-2">
+                {!oauthStatus?.facebook.configured &&
+                  `Facebook OAuth is not configured. Missing: ${oauthStatus?.facebook.missingFields.join(', ')}`}
+                {!oauthStatus?.facebook.configured && !oauthStatus?.instagram.configured && ' | '}
+                {!oauthStatus?.instagram.configured &&
+                  `Instagram OAuth is not configured. Missing: ${oauthStatus?.instagram.missingFields.join(', ')}`}
               </p>
-              <div className="space-y-2">
-                <p className="text-sm text-amber-800 font-medium">You have two options:</p>
-                <div className="ml-4 space-y-2">
-                  <div className="flex items-start">
-                    <span className="text-amber-700 mr-2">1.</span>
-                    <div>
-                      <span className="text-sm text-amber-800 font-medium">Quick Solution:</span>
-                      <p className="text-sm text-amber-700">
-                        Use the <strong>"Manual Token"</strong> button below to connect with an access token from{' '}
-                        <a
-                          href="https://developers.facebook.com/tools/explorer/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline hover:text-amber-900"
-                        >
-                          Facebook Graph API Explorer
-                        </a>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <span className="text-amber-700 mr-2">2.</span>
-                    <div>
-                      <span className="text-sm text-amber-800 font-medium">Full OAuth Setup:</span>
-                      <p className="text-sm text-amber-700">
-                        Follow the{' '}
-                        <a
-                          href="/OAUTH_SETUP.md"
-                          target="_blank"
-                          className="underline hover:text-amber-900"
-                        >
-                          OAUTH_SETUP.md guide
-                        </a>
-                        {' '}to configure Facebook Developer app credentials in <code className="bg-amber-100 px-1 rounded">backend/.env</code>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <p className="text-xs text-amber-700">
+                Configure the missing credentials in <code className="bg-amber-100 px-1 rounded">backend/.env</code> to enable all providers.
+              </p>
             </div>
           </div>
         </Card>
@@ -262,7 +337,8 @@ export default function SocialPage() {
 
       {/* Connect New Account */}
       <Card className="mb-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <Share2 className="h-5 w-5 mr-2 text-orange-600" />
           Connect New Account
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -273,31 +349,28 @@ export default function SocialPage() {
                 <Facebook className="h-6 w-6 text-blue-600 mr-2" />
                 <span className="font-medium text-gray-900">Facebook</span>
               </div>
-              {oauthConfigured.facebook && (
+              {oauthStatus?.facebook.configured && (
                 <Badge variant="success" size="sm">
-                  <Shield className="h-3 w-3 mr-1" />
-                  OAuth Ready
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Ready
                 </Badge>
               )}
             </div>
-            <button
+            <Button
+              variant="primary"
               onClick={() => handleOAuthConnect('facebook')}
-              disabled={connecting}
-              className="flex items-center justify-center w-full p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+              disabled={connecting || !oauthStatus?.facebook.configured}
+              className="w-full"
             >
-              <Facebook className="h-6 w-6 text-blue-600 mr-2" />
-              <span className="text-base font-medium text-gray-900 group-hover:text-blue-700">
-                {oauthConfigured.facebook ? 'Connect with OAuth' : 'Connect (OAuth not set up)'}
-              </span>
-              <ExternalLink className="h-4 w-4 ml-2 text-gray-400 group-hover:text-blue-600" />
-            </button>
-            <button
-              onClick={() => setShowManualTokenModal('facebook')}
-              className="flex items-center justify-center w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded transition-colors border border-gray-200"
-            >
-              <Key className="h-4 w-4 mr-1" />
-              Use Manual Token
-            </button>
+              <Facebook className="h-5 w-5 mr-2" />
+              {oauthStatus?.facebook.configured ? 'Connect with Facebook' : 'Not Configured'}
+              <ExternalLink className="h-4 w-4 ml-2" />
+            </Button>
+            {!oauthStatus?.facebook.configured && (
+              <p className="text-xs text-gray-500 text-center">
+                Administrator needs to configure OAuth
+              </p>
+            )}
           </div>
 
           {/* Instagram */}
@@ -307,138 +380,31 @@ export default function SocialPage() {
                 <Instagram className="h-6 w-6 text-pink-600 mr-2" />
                 <span className="font-medium text-gray-900">Instagram</span>
               </div>
-              {oauthConfigured.instagram && (
+              {oauthStatus?.instagram.configured && (
                 <Badge variant="success" size="sm">
-                  <Shield className="h-3 w-3 mr-1" />
-                  OAuth Ready
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Ready
                 </Badge>
               )}
             </div>
-            <button
+            <Button
+              variant="primary"
               onClick={() => handleOAuthConnect('instagram')}
-              disabled={connecting}
-              className="flex items-center justify-center w-full p-4 border-2 border-pink-200 rounded-lg hover:border-pink-500 hover:bg-pink-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+              disabled={connecting || !oauthStatus?.instagram.configured}
+              className="w-full"
             >
-              <Instagram className="h-6 w-6 text-pink-600 mr-2" />
-              <span className="text-base font-medium text-gray-900 group-hover:text-pink-700">
-                {oauthConfigured.instagram ? 'Connect with OAuth' : 'Connect (OAuth not set up)'}
-              </span>
-              <ExternalLink className="h-4 w-4 ml-2 text-gray-400 group-hover:text-pink-600" />
-            </button>
-            <button
-              onClick={() => setShowManualTokenModal('instagram')}
-              className="flex items-center justify-center w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded transition-colors border border-gray-200"
-            >
-              <Key className="h-4 w-4 mr-1" />
-              Use Manual Token
-            </button>
+              <Instagram className="h-5 w-5 mr-2" />
+              {oauthStatus?.instagram.configured ? 'Connect with Instagram' : 'Not Configured'}
+              <ExternalLink className="h-4 w-4 ml-2" />
+            </Button>
+            {!oauthStatus?.instagram.configured && (
+              <p className="text-xs text-gray-500 text-center">
+                Administrator needs to configure OAuth
+              </p>
+            )}
           </div>
         </div>
       </Card>
-
-      {/* Manual Token Modal */}
-      {showManualTokenModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="max-w-lg w-full">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Connect {showManualTokenModal === 'facebook' ? 'Facebook' : 'Instagram'} Manually
-              </h3>
-              {showManualTokenModal === 'facebook' ? (
-                <Facebook className="h-6 w-6 text-blue-600" />
-              ) : (
-                <Instagram className="h-6 w-6 text-pink-600" />
-              )}
-            </div>
-
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start">
-                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-                <p className="text-xs text-blue-800">
-                  This method requires you to manually generate an access token from Facebook's developer tools.
-                  The OAuth method (main button) is easier but requires backend configuration.
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Access Token
-              </label>
-              <textarea
-                value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
-                placeholder="Paste your access token here..."
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
-              />
-              <div className="mt-3 space-y-2">
-                <p className="text-xs font-medium text-gray-700">How to get your access token:</p>
-                {showManualTokenModal === 'facebook' ? (
-                  <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside ml-2">
-                    <li>
-                      Go to{' '}
-                      <a
-                        href="https://developers.facebook.com/tools/explorer/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline inline-flex items-center"
-                      >
-                        Graph API Explorer
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </a>
-                    </li>
-                    <li>Click "Generate Access Token"</li>
-                    <li>Grant permissions: <code className="bg-gray-100 px-1 rounded text-xs">public_profile, user_photos</code></li>
-                    <li>Copy the token and paste it above</li>
-                  </ol>
-                ) : (
-                  <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside ml-2">
-                    <li>
-                      Go to{' '}
-                      <a
-                        href="https://developers.facebook.com/apps/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-pink-600 hover:underline inline-flex items-center"
-                      >
-                        Facebook for Developers
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </a>
-                    </li>
-                    <li>Select your app → Instagram Basic Display</li>
-                    <li>Generate a User Token for a test user</li>
-                    <li>Copy the token and paste it above</li>
-                  </ol>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="primary"
-                onClick={() => handleManualTokenConnect(showManualTokenModal)}
-                isLoading={connecting}
-                disabled={!accessToken.trim()}
-                className="flex-1"
-              >
-                {connecting ? 'Connecting...' : 'Connect Account'}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShowManualTokenModal(null);
-                  setAccessToken('');
-                  setError('');
-                }}
-                disabled={connecting}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
 
       {/* Connected Accounts */}
       <div className="space-y-6">
@@ -453,20 +419,28 @@ export default function SocialPage() {
         ) : accounts.length === 0 ? (
           <Card>
             <div className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                <Share2 className="h-8 w-8 text-gray-400" />
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 mb-4">
+                <Share2 className="h-8 w-8 text-orange-600" />
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No accounts connected yet</h3>
               <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                Connect your Facebook or Instagram account to scan for photos containing your face across your social media.
+                {isAnyOAuthConfigured
+                  ? 'Connect your social media accounts to scan for photos containing your face.'
+                  : 'OAuth configuration is required before you can connect accounts.'}
               </p>
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <span>Secure OAuth authentication</span>
-                <span className="text-gray-300">•</span>
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <span>GDPR compliant</span>
-              </div>
+              {isAnyOAuthConfigured && (
+                <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <Shield className="h-4 w-4 mr-1 text-green-600" />
+                    <span>Secure OAuth</span>
+                  </div>
+                  <span className="text-gray-300">•</span>
+                  <div className="flex items-center">
+                    <Lock className="h-4 w-4 mr-1 text-green-600" />
+                    <span>GDPR Compliant</span>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         ) : (
@@ -475,9 +449,7 @@ export default function SocialPage() {
               <Card key={account.id}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start flex-1">
-                    <div className="mr-4 mt-1">
-                      {getProviderIcon(account.provider)}
-                    </div>
+                    <div className="mr-4 mt-1">{getProviderIcon(account.provider)}</div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="text-lg font-semibold text-gray-900">
@@ -494,9 +466,7 @@ export default function SocialPage() {
                           )}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">
-                        @{account.username}
-                      </p>
+                      <p className="text-sm text-gray-600 mb-2">@{account.username}</p>
                       <div className="flex flex-wrap gap-3 items-center">
                         <a
                           href={account.profileUrl}
@@ -532,7 +502,9 @@ export default function SocialPage() {
                         isLoading={syncing === account.id}
                         disabled={!!syncing}
                       >
-                        <RefreshCw className={`h-4 w-4 mr-1 ${syncing === account.id ? 'animate-spin' : ''}`} />
+                        <RefreshCw
+                          className={`h-4 w-4 mr-1 ${syncing === account.id ? 'animate-spin' : ''}`}
+                        />
                         {syncing === account.id ? 'Syncing...' : 'Sync'}
                       </Button>
                     )}
@@ -553,52 +525,60 @@ export default function SocialPage() {
         )}
       </div>
 
-      {/* Info Card */}
-      <Card className="mt-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
-        <div className="flex items-start">
-          <Shield className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
-          <div>
-            <h3 className="text-sm font-medium text-blue-900 mb-2">
-              How Social Media Scanning Works
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <h4 className="text-xs font-semibold text-blue-800 mb-1">Connection Methods:</h4>
-                <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside ml-2">
-                  <li><strong>OAuth (Recommended):</strong> Secure one-click connection - requires backend setup</li>
-                  <li><strong>Manual Token:</strong> Works immediately - paste a token from Facebook's developer tools</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-xs font-semibold text-blue-800 mb-1">After Connection:</h4>
-                <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside ml-2">
-                  <li>Click "Sync" to fetch your photos and tagged photos</li>
-                  <li>Photos are temporarily stored for facial recognition scanning</li>
-                  <li>Run scans from the Scans page to find matches</li>
-                  <li>View results and manage findings in the Results page</li>
-                  <li>Disconnect anytime to remove all synced data</li>
-                </ul>
-              </div>
-              <div className="pt-2 border-t border-blue-200">
-                <div className="flex items-center gap-3 text-xs text-blue-700">
-                  <div className="flex items-center">
-                    <CheckCircle2 className="h-3 w-3 mr-1 text-green-600" />
-                    End-to-end encrypted
-                  </div>
-                  <div className="flex items-center">
-                    <CheckCircle2 className="h-3 w-3 mr-1 text-green-600" />
-                    GDPR compliant
-                  </div>
-                  <div className="flex items-center">
-                    <CheckCircle2 className="h-3 w-3 mr-1 text-green-600" />
-                    Your data, your control
+      {/* Info Card - Only show if OAuth is configured */}
+      {isAnyOAuthConfigured && (
+        <Card className="mt-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+          <div className="flex items-start">
+            <Shield className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
+            <div>
+              <h3 className="text-sm font-medium text-blue-900 mb-2">
+                How Social Media Scanning Works
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-xs font-semibold text-blue-800 mb-1">Connection:</h4>
+                  <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside ml-2">
+                    <li>Click "Connect with Facebook/Instagram" above</li>
+                    <li>You'll be redirected to authorize OrangePrivacy</li>
+                    <li>Grant permissions to access your photos</li>
+                    <li>You'll be redirected back automatically</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-blue-800 mb-1">After Connection:</h4>
+                  <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside ml-2">
+                    <li>Click "Sync" to fetch your photos and tagged photos</li>
+                    <li>Photos are stored securely for facial recognition</li>
+                    <li>Run scans to find matches across social media</li>
+                    <li>View and manage results in the Results page</li>
+                    <li>Disconnect anytime to remove all data</li>
+                  </ul>
+                </div>
+                <div className="pt-2 border-t border-blue-200">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-blue-700">
+                    <div className="flex items-center">
+                      <Lock className="h-3 w-3 mr-1 text-green-600" />
+                      OAuth 2.0 Secured
+                    </div>
+                    <div className="flex items-center">
+                      <CheckCircle2 className="h-3 w-3 mr-1 text-green-600" />
+                      No password sharing
+                    </div>
+                    <div className="flex items-center">
+                      <CheckCircle2 className="h-3 w-3 mr-1 text-green-600" />
+                      Full control
+                    </div>
+                    <div className="flex items-center">
+                      <Shield className="h-3 w-3 mr-1 text-green-600" />
+                      GDPR compliant
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
     </DashboardLayout>
   );
 }

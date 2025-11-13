@@ -79,12 +79,14 @@ export const scanResultAPI = {
 
 // Social Media API
 export const socialMediaAPI = {
+  // Get connected accounts
   getAll: () => api.get('/social-media'),
-  connectFacebook: (data: any) => api.post('/social-media/facebook/connect', data),
-  connectInstagram: (data: any) => api.post('/social-media/instagram/connect', data),
+  // OAuth configuration status
+  getOAuthStatus: () => axios.get(`${API_URL}/api/social-media/oauth/status`),
   // OAuth flows
   getFacebookOAuthUrl: () => api.get('/social-media/facebook/oauth'),
   getInstagramOAuthUrl: () => api.get('/social-media/instagram/oauth'),
+  // Account management
   sync: (accountId: string) => api.post(`/social-media/${accountId}/sync`),
   disconnect: (accountId: string) => api.post(`/social-media/${accountId}/disconnect`),
 };
