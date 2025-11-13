@@ -10,6 +10,7 @@ import {
   Settings,
   User,
   LogOut,
+  Share2,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { clsx } from 'clsx';
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Reference Photos', href: '/dashboard/photos', icon: Image },
   { name: 'Scans', href: '/dashboard/scans', icon: Scan },
   { name: 'Results', href: '/dashboard/results', icon: FileSearch },
+  { name: 'Social Media', href: '/dashboard/social', icon: Share2 },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
