@@ -3,11 +3,11 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
 
 const db = require('./models');
 const awsService = require('./services/aws.service');
 const queueService = require('./services/queue.service');
+const { apiLimiter } = require('./middleware/rateLimiter.middleware');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -30,13 +30,8 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', limiter);
+// Global API rate limiting (specific endpoints have stricter limits)
+app.use('/api/', apiLimiter);
 
 // Health check
 app.get('/health', async (req, res) => {

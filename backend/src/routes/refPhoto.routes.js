@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const refPhotoController = require('../controllers/refPhoto.controller');
 const { authenticate, requireBiometricConsent } = require('../middleware/auth.middleware');
 const { validate } = require('../middleware/validation.middleware');
+const { uploadLimiter } = require('../middleware/rateLimiter.middleware');
 const upload = require('../config/multer.config');
 
 const router = express.Router();
@@ -11,9 +12,10 @@ const router = express.Router();
 router.use(authenticate);
 router.use(requireBiometricConsent);
 
-// Upload reference photo
+// Upload reference photo (with rate limiting)
 router.post(
   '/',
+  uploadLimiter,
   upload.single('photo'),
   [
     body('photoType').optional().isIn(['frontal', 'side', 'other'])
