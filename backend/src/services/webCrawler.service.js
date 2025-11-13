@@ -128,8 +128,10 @@ class WebCrawlerService {
     const filteredResults = sampleResults.filter(r => r.confidence >= confidenceThreshold);
 
     // Create scan results
-    for (const result of filteredResults) {
-      await ScanResult.create({
+    console.log(`\n💾 Creating ${filteredResults.length} demo scan results...`);
+    for (let i = 0; i < filteredResults.length; i++) {
+      const result = filteredResults[i];
+      const savedResult = await ScanResult.create({
         scanJobId,
         sourceUrl: result.sourceUrl,
         imageUrl: result.imageUrl,
@@ -145,6 +147,8 @@ class WebCrawlerService {
         }
       });
 
+      console.log(`   ✓ Result ${i + 1}/${filteredResults.length} saved (ID: ${savedResult.id}, Confidence: ${result.confidence}%)`);
+
       // Update progress
       await scanJob.update({
         progress: Math.min(90, scanJob.progress + 15),
@@ -155,7 +159,7 @@ class WebCrawlerService {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    console.log(`Demo scan created ${filteredResults.length} sample results`);
+    console.log(`✅ Demo scan created ${filteredResults.length} sample results\n`);
   }
 
   /**

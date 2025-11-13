@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/components/ui/ToastContainer';
 import { scanJobAPI, scanResultAPI } from '@/lib/api';
-import { ExternalLink, ThumbsUp, ThumbsDown, Image as ImageIcon } from 'lucide-react';
+import { ExternalLink, ThumbsUp, ThumbsDown, Image as ImageIcon, Grid3x3, List, SlidersHorizontal } from 'lucide-react';
 
 interface ScanResult {
   id: string;
@@ -31,6 +32,7 @@ interface ScanJob {
 export default function ResultsPageContent() {
   const searchParams = useSearchParams();
   const scanId = searchParams.get('scanId');
+  const toast = useToast();
 
   const [scans, setScans] = useState<ScanJob[]>([]);
   const [selectedScan, setSelectedScan] = useState<string | null>(scanId);
@@ -38,10 +40,11 @@ export default function ResultsPageContent() {
   const [stats, setStats] = useState({ totalMatches: 0, confirmedMatches: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [selectedResult, setSelectedResult] = useState<ScanResult | null>(null);
   const [imageModal, setImageModal] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [showFilters, setShowFilters] = useState(false);
 
   // Filters
   const [filters, setFilters] = useState({
@@ -129,15 +132,20 @@ export default function ResultsPageContent() {
       setError('');
       setConfirmingId(resultId);
       await scanResultAPI.updateConfirmation(resultId, isConfirmed);
-      setSuccess(`Match ${isConfirmed ? 'confirmed' : 'rejected'} successfully`);
+
+      toast.success(
+        isConfirmed ? 'Match Confirmed!' : 'Match Rejected',
+        `Successfully ${isConfirmed ? 'confirmed' : 'rejected'} this match`
+      );
+
       if (selectedScan) {
         await fetchResults(selectedScan);
       }
-      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
       console.error('Confirmation error:', err);
-      setError(err.response?.data?.error || `Failed to ${isConfirmed ? 'confirm' : 'reject'} match`);
-      setTimeout(() => setError(''), 5000);
+      const errorMessage = err.response?.data?.error || `Failed to ${isConfirmed ? 'confirm' : 'reject'} match`;
+      setError(errorMessage);
+      toast.error('Operation Failed', errorMessage);
     } finally {
       setConfirmingId(null);
     }
@@ -151,25 +159,55 @@ export default function ResultsPageContent() {
 
   return (
     <>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Scan Results</h1>
-        <p className="mt-2 text-gray-600">
-          Review matches found during facial recognition scans
-        </p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Scan Results</h1>
+          <p className="mt-2 text-gray-600">
+            Review and manage matches found during scans
+          </p>
+        </div>
+
+        {/* View Mode Toggle */}
+        {selectedScan && results.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showFilters ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <SlidersHorizontal className="h-4 w-4 mr-2" />
+              Filters
+            </Button>
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Grid3x3 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <List className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {error && (
-        <div className="mb-6">
+        <div className="mb-6 animate-fade-in">
           <Alert variant="error" onClose={() => setError('')}>
             {error}
-          </Alert>
-        </div>
-      )}
-
-      {success && (
-        <div className="mb-6">
-          <Alert variant="success" onClose={() => setSuccess('')}>
-            {success}
           </Alert>
         </div>
       )}
@@ -229,8 +267,8 @@ export default function ResultsPageContent() {
       )}
 
       {/* Filters */}
-      {selectedScan && results.length > 0 && (
-        <Card className="mb-6">
+      {selectedScan && results.length > 0 && showFilters && (
+        <Card className="mb-6 animate-fade-in">
           <h3 className="text-sm font-semibold text-gray-900 mb-4">Filters</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
@@ -294,8 +332,16 @@ export default function ResultsPageContent() {
 
       {/* Results Grid */}
       {loading ? (
-        <div className="text-center py-12">
-          <p className="text-gray-600">Loading results...</p>
+        <div className={`grid ${viewMode === 'grid' ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6' : 'grid-cols-1'} gap-4`}>
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <Card key={i} padding="none" className="overflow-hidden">
+              <div className="aspect-square bg-gray-200 animate-pulse" />
+              <div className="p-3 space-y-2">
+                <div className="h-3 bg-gray-200 rounded animate-pulse" />
+                <div className="h-3 bg-gray-200 rounded w-2/3 animate-pulse" />
+              </div>
+            </Card>
+          ))}
         </div>
       ) : !selectedScan ? (
         <Card className="text-center py-12">
@@ -320,16 +366,28 @@ export default function ResultsPageContent() {
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredResults.map((result) => (
-            <Card key={result.id} padding="none" className="overflow-hidden hover:shadow-lg transition-shadow">
-              <div
-                className="aspect-square relative bg-gray-100 cursor-pointer group"
-                onClick={() => {
-                  setSelectedResult(result);
-                  setImageModal(true);
-                }}
-              >
+        <div className={`grid gap-4 ${
+          viewMode === 'grid'
+            ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'
+            : 'grid-cols-1'
+        }`}>
+          {filteredResults.map((result, index) => (
+            <Card
+              key={result.id}
+              padding="none"
+              className="overflow-hidden hover:shadow-lg transition-all hover:scale-105 animate-fade-in"
+              style={{ animationDelay: `${index * 30}ms` }}
+            >
+              {viewMode === 'grid' ? (
+                /* Grid View - Compact Cards */
+                <>
+                  <div
+                    className="aspect-square relative bg-gray-100 cursor-pointer group"
+                    onClick={() => {
+                      setSelectedResult(result);
+                      setImageModal(true);
+                    }}
+                  >
                 {(result.imageUrl || result.thumbnailUrl) ? (
                   <img
                     src={result.imageUrl || result.thumbnailUrl}
@@ -383,9 +441,8 @@ export default function ResultsPageContent() {
                 )}
               </div>
 
-              <div className="p-3">
-
-                <div className="space-y-2">
+              <div className="p-2">
+                <div className="space-y-1.5">
                   <div className="text-xs text-gray-600">
                     <a
                       href={result.sourceUrl}
@@ -394,17 +451,13 @@ export default function ResultsPageContent() {
                       className="text-orange-600 hover:text-orange-700 flex items-center gap-1 hover:underline"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <span className="truncate flex-1">View Source</span>
+                      <span className="truncate flex-1 text-xs">Source</span>
                       <ExternalLink className="h-3 w-3 flex-shrink-0" />
                     </a>
                   </div>
 
-                  <div className="text-xs text-gray-500">
-                    {new Date(result.createdAt).toLocaleDateString()}
-                  </div>
-
                   {result.isConfirmedByUser === undefined || result.isConfirmedByUser === null ? (
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex gap-1 pt-1">
                       <Button
                         size="sm"
                         variant="primary"
@@ -413,10 +466,9 @@ export default function ResultsPageContent() {
                           handleConfirmation(result.id, true);
                         }}
                         disabled={confirmingId === result.id}
-                        className="flex-1 text-xs py-1"
+                        className="flex-1 text-xs py-1 px-2"
                       >
-                        <ThumbsUp className="h-3 w-3 mr-1" />
-                        {confirmingId === result.id ? 'Confirming...' : 'Confirm'}
+                        <ThumbsUp className="h-3 w-3" />
                       </Button>
                       <Button
                         size="sm"
@@ -426,15 +478,120 @@ export default function ResultsPageContent() {
                           handleConfirmation(result.id, false);
                         }}
                         disabled={confirmingId === result.id}
-                        className="flex-1 text-xs py-1"
+                        className="flex-1 text-xs py-1 px-2"
                       >
-                        <ThumbsDown className="h-3 w-3 mr-1" />
-                        {confirmingId === result.id ? 'Rejecting...' : 'Reject'}
+                        <ThumbsDown className="h-3 w-3" />
                       </Button>
                     </div>
                   ) : null}
                 </div>
               </div>
+            </>
+              ) : (
+                /* List View - Detailed Cards */
+                <div className="flex gap-4 p-4">
+                  <div
+                    className="w-32 h-32 relative bg-gray-100 cursor-pointer group rounded-lg overflow-hidden flex-shrink-0"
+                    onClick={() => {
+                      setSelectedResult(result);
+                      setImageModal(true);
+                    }}
+                  >
+                    {(result.imageUrl || result.thumbnailUrl) ? (
+                      <img
+                        src={result.imageUrl || result.thumbnailUrl}
+                        alt="Match"
+                        className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200">
+                        <ImageIcon className="h-8 w-8 text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="info" size="sm">
+                            {result.sourceType === 'social_media' ? 'Social Media' : 'Web'}
+                          </Badge>
+                          <span
+                            className={`inline-block px-2 py-0.5 text-xs font-bold rounded ${
+                              result.confidence >= 90
+                                ? 'bg-green-100 text-green-800'
+                                : result.confidence >= 75
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-orange-100 text-orange-800'
+                            }`}
+                          >
+                            {result.confidence}% Confidence
+                          </span>
+                        </div>
+
+                        {result.isConfirmedByUser !== undefined && (
+                          <Badge
+                            variant={result.isConfirmedByUser ? 'success' : 'error'}
+                            size="sm"
+                          >
+                            {result.isConfirmedByUser ? '✓ Confirmed' : '✗ Rejected'}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="text-sm text-gray-600 space-y-1">
+                        <p className="flex items-center gap-1">
+                          <span className="font-medium">Source:</span>
+                          <a
+                            href={result.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-orange-600 hover:text-orange-700 hover:underline flex items-center gap-1 truncate"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="truncate">{result.sourceUrl}</span>
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                          </a>
+                        </p>
+                        <p>
+                          <span className="font-medium">Detected:</span>{' '}
+                          {new Date(result.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    {result.isConfirmedByUser === undefined || result.isConfirmedByUser === null ? (
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleConfirmation(result.id, true);
+                          }}
+                          disabled={confirmingId === result.id}
+                        >
+                          <ThumbsUp className="h-4 w-4 mr-2" />
+                          {confirmingId === result.id ? 'Confirming...' : 'Confirm Match'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleConfirmation(result.id, false);
+                          }}
+                          disabled={confirmingId === result.id}
+                        >
+                          <ThumbsDown className="h-4 w-4 mr-2" />
+                          {confirmingId === result.id ? 'Rejecting...' : 'Reject Match'}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
             </Card>
           ))}
         </div>

@@ -1,14 +1,45 @@
-import axios from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-// Create axios instance
+// Create axios instance with timeout and retry configuration
 const api = axios.create({
   baseURL: `${API_URL}/api`,
+  timeout: 30000, // 30 second timeout (increased for scan operations)
   headers: {
     'Content-Type': 'application/json',
   },
+  // Enable keepalive for persistent connections
+  transitional: {
+    clarifyTimeoutError: true,
+  },
 });
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second base delay
+const RETRY_STATUS_CODES = [408, 429, 500, 502, 503, 504];
+
+// Helper to check if request should be retried
+const shouldRetry = (error: AxiosError): boolean => {
+  if (!error.config) return false;
+
+  // Don't retry if max retries reached
+  const config = error.config as any;
+  const retryCount = config.__retryCount || 0;
+  if (retryCount >= MAX_RETRIES) return false;
+
+  // Retry on network errors
+  if (!error.response) return true;
+
+  // Retry on specific status codes
+  return RETRY_STATUS_CODES.includes(error.response.status);
+};
+
+// Helper to calculate retry delay with exponential backoff
+const getRetryDelay = (retryCount: number): number => {
+  return RETRY_DELAY * Math.pow(2, retryCount);
+};
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
@@ -24,16 +55,47 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
+// Response interceptor for error handling with retry logic
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error: AxiosError) => {
+    const config = error.config as any;
+
+    // Handle 401 Unauthorized - redirect to login
     if (error.response?.status === 401) {
-      // Redirect to login if unauthorized
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
       window.location.href = '/login';
+      return Promise.reject(error);
     }
+
+    // Retry logic for network errors and specific status codes
+    if (shouldRetry(error)) {
+      config.__retryCount = (config.__retryCount || 0) + 1;
+      const retryDelay = getRetryDelay(config.__retryCount);
+
+      console.log(
+        `Retrying request (${config.__retryCount}/${MAX_RETRIES}) after ${retryDelay}ms...`,
+        error.message
+      );
+
+      // Wait before retrying
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+
+      // Retry the request
+      return api.request(config);
+    }
+
+    // Log connection errors for debugging
+    if (!error.response) {
+      console.error('Network Error:', {
+        message: error.message,
+        code: error.code,
+        url: config?.url,
+        method: config?.method,
+      });
+    }
+
     return Promise.reject(error);
   }
 );
@@ -62,9 +124,16 @@ export const refPhotoAPI = {
 
 // Scan Jobs API
 export const scanJobAPI = {
-  getAll: (params?: any) => api.get('/scan-jobs', { params }),
-  getById: (jobId: string) => api.get(`/scan-jobs/${jobId}`),
-  create: (data: any) => api.post('/scan-jobs', data),
+  getAll: (params?: any) => api.get('/scan-jobs', {
+    params,
+    timeout: 10000, // 10 second timeout for polling
+  }),
+  getById: (jobId: string) => api.get(`/scan-jobs/${jobId}`, {
+    timeout: 10000, // 10 second timeout
+  }),
+  create: (data: any) => api.post('/scan-jobs', data, {
+    timeout: 60000, // 60 second timeout for creation (job queuing)
+  }),
   cancel: (jobId: string) => api.post(`/scan-jobs/${jobId}/cancel`),
   getStats: () => api.get('/scan-jobs/stats'),
 };

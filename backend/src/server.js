@@ -1,13 +1,21 @@
 require('dotenv').config();
+
+// Validate environment variables before starting
+const envValidator = require('./config/envValidator');
+if (!envValidator.validate()) {
+  console.error('\n❌ Environment validation failed. Exiting...\n');
+  process.exit(1);
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
 
 const db = require('./models');
 const awsService = require('./services/aws.service');
 const queueService = require('./services/queue.service');
+const { apiLimiter } = require('./middleware/rateLimiter.middleware');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -30,13 +38,8 @@ app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', limiter);
+// Global API rate limiting (specific endpoints have stricter limits)
+app.use('/api/', apiLimiter);
 
 // Health check
 app.get('/health', async (req, res) => {
@@ -75,28 +78,14 @@ app.use('/api/social-media', socialMediaRoutes);
 app.use('/api/admin', adminRoutes);
 
 // 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+// Error handling middleware
+const { notFound, errorHandler } = require('./middleware/errorHandler.middleware');
 
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
+// 404 handler - must be after all routes
+app.use(notFound);
 
-  // Multer errors
-  if (err.name === 'MulterError') {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'File size too large. Maximum 10MB allowed.' });
-    }
-    return res.status(400).json({ error: err.message });
-  }
-
-  // Default error
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
+// Global error handler - must be last
+app.use(errorHandler);
 
 // Initialize database and start server
 const startServer = async () => {
@@ -143,8 +132,8 @@ const startServer = async () => {
       console.warn(`   Current config: ${redisHealth.host}:${redisHealth.port}${process.env.REDIS_PASSWORD ? ' (with auth)' : ' (no auth)'}`);
     }
 
-    // Start server
-    app.listen(PORT, () => {
+    // Start server with keepalive configuration
+    const server = app.listen(PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
@@ -158,6 +147,18 @@ const startServer = async () => {
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
       `);
+    });
+
+    // Configure server timeouts and keepalive
+    // Increase timeout for long-running operations (like scans)
+    server.timeout = 120000; // 120 seconds (2 minutes)
+    server.keepAliveTimeout = 65000; // 65 seconds (greater than default load balancer timeout)
+    server.headersTimeout = 66000; // Slightly more than keepAliveTimeout
+
+    // Enable TCP keepalive
+    server.on('connection', (socket) => {
+      socket.setKeepAlive(true, 60000); // Enable keepalive with 60s initial delay
+      socket.setTimeout(120000); // Socket timeout 120s
     });
   } catch (error) {
     console.error('Failed to start server:', error);

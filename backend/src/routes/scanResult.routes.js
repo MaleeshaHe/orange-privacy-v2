@@ -3,6 +3,7 @@ const { body, query } = require('express-validator');
 const scanResultController = require('../controllers/scanResult.controller');
 const { authenticate, requireBiometricConsent } = require('../middleware/auth.middleware');
 const { validate } = require('../middleware/validation.middleware');
+const { pollingLimiter } = require('../middleware/rateLimiter.middleware');
 
 const router = express.Router();
 
@@ -10,9 +11,10 @@ const router = express.Router();
 router.use(authenticate);
 router.use(requireBiometricConsent);
 
-// Get results for a scan job
+// Get results for a scan job (with permissive polling rate limit)
 router.get(
   '/scan/:scanJobId',
+  pollingLimiter,
   [
     query('minConfidence').optional().isFloat({ min: 0, max: 100 }),
     query('maxConfidence').optional().isFloat({ min: 0, max: 100 }),
@@ -25,8 +27,8 @@ router.get(
   scanResultController.getScanResults
 );
 
-// Get statistics for scan results
-router.get('/scan/:scanJobId/stats', scanResultController.getResultStats);
+// Get statistics for scan results (with permissive polling rate limit)
+router.get('/scan/:scanJobId/stats', pollingLimiter, scanResultController.getResultStats);
 
 // Update result confirmation ("This is me" / "Not me")
 router.patch(

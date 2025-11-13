@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const authController = require('../controllers/auth.controller');
 const { authenticate } = require('../middleware/auth.middleware');
 const { validate } = require('../middleware/validation.middleware');
+const { loginLimiter, registerLimiter, passwordChangeLimiter } = require('../middleware/rateLimiter.middleware');
 
 const router = express.Router();
 
@@ -40,15 +41,15 @@ const changePasswordValidation = [
     .withMessage('New password must contain at least one uppercase letter, one lowercase letter, and one number')
 ];
 
-// Public routes
-router.post('/register', registerValidation, validate, authController.register);
-router.post('/login', loginValidation, validate, authController.login);
+// Public routes (with rate limiting)
+router.post('/register', registerLimiter, registerValidation, validate, authController.register);
+router.post('/login', loginLimiter, loginValidation, validate, authController.login);
 
 // Protected routes
 router.get('/profile', authenticate, authController.getProfile);
 router.put('/profile', authenticate, updateProfileValidation, validate, authController.updateProfile);
 router.post('/consent/biometric', authenticate, authController.giveBiometricConsent);
 router.delete('/consent/biometric', authenticate, authController.revokeBiometricConsent);
-router.post('/change-password', authenticate, changePasswordValidation, validate, authController.changePassword);
+router.post('/change-password', authenticate, passwordChangeLimiter, changePasswordValidation, validate, authController.changePassword);
 
 module.exports = router;

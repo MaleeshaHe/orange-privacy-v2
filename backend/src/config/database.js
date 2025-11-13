@@ -45,7 +45,11 @@ module.exports = {
     dialectOptions: {
       ssl: {
         require: true,
-        rejectUnauthorized: false
+        // SECURITY: Always verify SSL certificates in production
+        // Set DB_SSL_REJECT_UNAUTHORIZED=false ONLY for development/testing with self-signed certs
+        rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+        // Optional: Specify custom CA certificate path
+        // ca: process.env.DB_SSL_CA ? require('fs').readFileSync(process.env.DB_SSL_CA) : undefined
       }
     }
   }
