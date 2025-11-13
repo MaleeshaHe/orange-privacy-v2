@@ -170,33 +170,33 @@ export default function PhotosPage() {
       {/* Statistics Cards */}
       {photos.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <Card className="bg-white border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-blue-600">Total Photos</p>
-                <p className="text-3xl font-bold text-blue-900 mt-1">{photos.length}</p>
+                <p className="text-sm font-medium text-gray-600">Total Photos</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{photos.length}</p>
               </div>
-              <ImageIcon className="h-12 w-12 text-blue-400" />
+              <ImageIcon className="h-12 w-12 text-gray-400" />
             </div>
           </Card>
 
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <Card className="bg-white border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-green-600">Active Photos</p>
-                <p className="text-3xl font-bold text-green-900 mt-1">{activePhotos}</p>
+                <p className="text-sm font-medium text-gray-600">Active Photos</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{activePhotos}</p>
               </div>
-              <Eye className="h-12 w-12 text-green-400" />
+              <Eye className="h-12 w-12 text-gray-400" />
             </div>
           </Card>
 
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <Card className="bg-white border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-purple-600">Faces Detected</p>
-                <p className="text-3xl font-bold text-purple-900 mt-1">{photosWithFaces}</p>
+                <p className="text-sm font-medium text-gray-600">Faces Detected</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{photosWithFaces}</p>
               </div>
-              <CheckCircle className="h-12 w-12 text-purple-400" />
+              <CheckCircle className="h-12 w-12 text-gray-400" />
             </div>
           </Card>
         </div>
