@@ -142,7 +142,19 @@ class WebCrawlerService {
    * Scan using Google Custom Search API
    */
   async scanUsingGoogleSearch(scanJobId, refPhotoFaceIds, confidenceThreshold) {
-    const scanJob = await ScanJob.findByPk(scanJobId);
+    const { User } = require('../models');
+
+    const scanJob = await ScanJob.findByPk(scanJobId, {
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['firstName', 'lastName', 'email']
+      }]
+    });
+
+    if (!scanJob) {
+      throw new Error('Scan job not found');
+    }
 
     // Get user's reference photos
     const refPhotos = await RefPhoto.findAll({
@@ -151,6 +163,21 @@ class WebCrawlerService {
 
     if (refPhotos.length === 0) {
       throw new Error('No active reference photos found');
+    }
+
+    // Construct search query from user's name
+    let searchQuery = 'person face'; // fallback
+    if (scanJob.user) {
+      const firstName = scanJob.user.firstName || '';
+      const lastName = scanJob.user.lastName || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+
+      if (fullName) {
+        searchQuery = fullName;
+        console.log(`🔍 Using search query: "${searchQuery}"`);
+      } else {
+        console.log(`⚠️  User has no name set, using fallback query: "${searchQuery}"`);
+      }
     }
 
     console.log(`Scanning with ${refPhotos.length} reference photos using Google Search`);
@@ -163,7 +190,7 @@ class WebCrawlerService {
         });
 
         // Search for similar images using Google Custom Search
-        const searchResults = await this.searchGoogleImages(refPhoto.signedUrl || refPhoto.s3Url);
+        const searchResults = await this.searchGoogleImages(refPhoto.signedUrl || refPhoto.s3Url, searchQuery);
 
         // Process each found image
         for (const searchResult of searchResults) {
@@ -197,8 +224,10 @@ class WebCrawlerService {
   /**
    * Search Google Custom Search API for similar images
    * Requires: GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID
+   * @param {string} imageUrl - Reference image URL (currently not used)
+   * @param {string} searchQuery - Search query (user's full name or fallback)
    */
-  async searchGoogleImages(imageUrl) {
+  async searchGoogleImages(imageUrl, searchQuery = 'person face') {
     const apiKey = process.env.GOOGLE_API_KEY;
     const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
 
@@ -215,14 +244,14 @@ class WebCrawlerService {
       console.log('📡 Sending request to Google Custom Search API...');
       console.log(`   API Key: ${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`);
       console.log(`   Search Engine ID: ${searchEngineId}`);
-      console.log(`   Query: "person face"`);
+      console.log(`   Query: "${searchQuery}"`);
 
       const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
         params: {
           key: apiKey,
           cx: searchEngineId,
           searchType: 'image',
-          q: 'person face',
+          q: searchQuery,
           imgSize: 'large',
           num: 10
         },
