@@ -91,7 +91,8 @@ const scanLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// General API rate limit (applied globally)
+// General API rate limit (applied globally to non-GET requests)
+// GET requests are handled by pollingLimiter in route files
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests per 15 minutes per IP
@@ -102,6 +103,8 @@ const apiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip GET requests - they are handled by pollingLimiter in routes
+  skip: (req) => req.method === 'GET',
 });
 
 // Permissive rate limit for polling endpoints (GET requests for status checks)
