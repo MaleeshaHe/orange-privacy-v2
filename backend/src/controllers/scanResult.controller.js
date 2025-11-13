@@ -169,7 +169,15 @@ const getResultStats = async (req, res) => {
       group: ['isConfirmedByUser']
     });
 
+    // Calculate simple summary stats
+    const totalMatches = await ScanResult.count({ where: { scanJobId } });
+    const confirmedMatches = await ScanResult.count({
+      where: { scanJobId, isConfirmedByUser: true }
+    });
+
     res.json({
+      totalMatches,
+      confirmedMatches,
       confidenceDistribution: distribution,
       sourceTypeDistribution: sourceTypeStats.map(s => ({
         sourceType: s.sourceType,

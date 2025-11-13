@@ -14,10 +14,11 @@ interface ScanResult {
   id: string;
   sourceUrl: string;
   sourceType: string;
-  matchedImageUrl: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
   confidence: number;
   isConfirmedByUser?: boolean;
-  detectedAt: string;
+  createdAt: string;
 }
 
 interface ScanJob {
@@ -208,11 +209,26 @@ export default function ResultsPageContent() {
                     setImageModal(true);
                   }}
                 >
-                  <img
-                    src={result.matchedImageUrl}
-                    alt="Match"
-                    className="w-full h-full object-cover"
-                  />
+                  {(result.imageUrl || result.thumbnailUrl) ? (
+                    <img
+                      src={result.imageUrl || result.thumbnailUrl}
+                      alt="Match"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center bg-gray-200"><svg class="h-12 w-12 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p class="text-sm text-gray-500">Image unavailable</p></div>';
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200">
+                      <ImageIcon className="h-12 w-12 text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-500">No image URL</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -233,7 +249,7 @@ export default function ResultsPageContent() {
 
                   <div className="text-sm text-gray-600">
                     <span className="font-medium">Detected:</span>{' '}
-                    {new Date(result.detectedAt).toLocaleString()}
+                    {new Date(result.createdAt).toLocaleString()}
                   </div>
 
                   {result.isConfirmedByUser !== undefined ? (
@@ -293,11 +309,26 @@ export default function ResultsPageContent() {
       >
         {selectedResult && (
           <div className="space-y-4">
-            <img
-              src={selectedResult.matchedImageUrl}
-              alt="Match"
-              className="w-full rounded-lg"
-            />
+            {(selectedResult.imageUrl || selectedResult.thumbnailUrl) ? (
+              <img
+                src={selectedResult.imageUrl || selectedResult.thumbnailUrl}
+                alt="Match"
+                className="w-full rounded-lg"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.style.display = 'none';
+                  const parent = target.parentElement;
+                  if (parent) {
+                    parent.innerHTML = '<div class="w-full flex flex-col items-center justify-center bg-gray-200 p-12 rounded-lg"><svg class="h-16 w-16 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p class="text-sm text-gray-500">Image unavailable</p></div>';
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-full flex flex-col items-center justify-center bg-gray-200 p-12 rounded-lg">
+                <ImageIcon className="h-16 w-16 text-gray-400 mb-2" />
+                <p className="text-sm text-gray-500">No image URL available</p>
+              </div>
+            )}
             <div className="space-y-2 text-sm">
               <p>
                 <span className="font-medium">Confidence:</span>{' '}
@@ -321,7 +352,7 @@ export default function ResultsPageContent() {
               </p>
               <p>
                 <span className="font-medium">Detected:</span>{' '}
-                {new Date(selectedResult.detectedAt).toLocaleString()}
+                {new Date(selectedResult.createdAt).toLocaleString()}
               </p>
             </div>
           </div>
