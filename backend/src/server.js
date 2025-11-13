@@ -1,4 +1,12 @@
 require('dotenv').config();
+
+// Validate environment variables before starting
+const envValidator = require('./config/envValidator');
+if (!envValidator.validate()) {
+  console.error('\n❌ Environment validation failed. Exiting...\n');
+  process.exit(1);
+}
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
