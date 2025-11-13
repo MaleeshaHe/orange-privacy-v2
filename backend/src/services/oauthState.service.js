@@ -31,7 +31,9 @@ class OAuthStateService {
 
     if ((explicitTLS || isHostedRedis) && !isLocalhost) {
       redisConfig.tls = {
-        rejectUnauthorized: process.env.NODE_ENV === 'production'
+        // SECURITY: Always verify TLS certificates in production
+        // Set REDIS_TLS_REJECT_UNAUTHORIZED=false ONLY for development/testing
+        rejectUnauthorized: process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== 'false'
       };
     }
 

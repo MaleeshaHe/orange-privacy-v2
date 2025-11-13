@@ -30,7 +30,9 @@ const isLocalhost = redisConfig.host.includes('localhost') || redisConfig.host.i
 
 if ((explicitTLS || (isHostedRedis && !isLocalhost)) && !isLocalhost) {
   redisConfig.tls = {
-    rejectUnauthorized: false // Some hosted services use self-signed certificates
+    // SECURITY: Always verify TLS certificates in production
+    // Set REDIS_TLS_REJECT_UNAUTHORIZED=false ONLY for development/testing with self-signed certs
+    rejectUnauthorized: process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== 'false'
   };
   console.log('📡 TLS enabled for Redis connection');
 }
