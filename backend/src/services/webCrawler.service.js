@@ -7,15 +7,14 @@ const { v4: uuidv4 } = require('uuid');
  * Web Crawler Service for scanning public web images
  *
  * MODES:
- * 1. Demo Mode - Creates sample scan results for testing (default when no API keys configured)
+ * 1. Demo Mode - Creates sample scan results for testing (default when no API key configured)
  * 2. Google Custom Search API - Uses Google's API for reverse image search
- * 3. Bing Image Search API - Uses Microsoft's API for image search
  */
 
 class WebCrawlerService {
   constructor() {
     this.userAgent = 'OrangePrivacyBot/1.0 (Privacy Scanner; +https://orangeprivacy.com/bot)';
-    this.demoMode = !process.env.GOOGLE_API_KEY && !process.env.BING_SEARCH_API_KEY;
+    this.demoMode = !process.env.GOOGLE_API_KEY || !process.env.GOOGLE_SEARCH_ENGINE_ID;
   }
 
   /**
@@ -33,13 +32,12 @@ class WebCrawlerService {
     try {
       if (this.demoMode) {
         // Demo mode - create sample results for testing
+        console.log('💡 Running in Demo Mode - configure Google Custom Search API for real scanning');
         await this.runDemoScan(scanJobId, confidenceThreshold);
-      } else if (process.env.GOOGLE_API_KEY) {
+      } else {
         // Use Google Custom Search API
+        console.log('🔍 Running with Google Custom Search API');
         await this.scanUsingGoogleSearch(scanJobId, refPhotoFaceIds, confidenceThreshold);
-      } else if (process.env.BING_SEARCH_API_KEY) {
-        // Use Bing Image Search API
-        await this.scanUsingBingSearch(scanJobId, refPhotoFaceIds, confidenceThreshold);
       }
 
       console.log(`Web scan completed for job ${scanJobId}`);
@@ -177,61 +175,6 @@ class WebCrawlerService {
   }
 
   /**
-   * Scan using Bing Image Search API
-   */
-  async scanUsingBingSearch(scanJobId, refPhotoFaceIds, confidenceThreshold) {
-    const scanJob = await ScanJob.findByPk(scanJobId);
-
-    // Get user's reference photos
-    const refPhotos = await RefPhoto.findAll({
-      where: { userId: scanJob.userId, isActive: true }
-    });
-
-    if (refPhotos.length === 0) {
-      throw new Error('No active reference photos found');
-    }
-
-    console.log(`Scanning with ${refPhotos.length} reference photos using Bing Search`);
-
-    for (const refPhoto of refPhotos) {
-      try {
-        // Update progress
-        await scanJob.update({
-          progress: Math.min(90, scanJob.progress + 10)
-        });
-
-        // Search for similar images using Bing
-        const searchResults = await this.searchBingImages(refPhoto.signedUrl || refPhoto.s3Url);
-
-        // Process each found image
-        for (const searchResult of searchResults) {
-          try {
-            const imageUrl = searchResult.contentUrl;
-            const sourceUrl = searchResult.hostPageUrl || searchResult.contentUrl;
-
-            if (!imageUrl) continue;
-
-            // Download and analyze the image
-            await this.analyzeWebImage(
-              imageUrl,
-              sourceUrl,
-              scanJobId,
-              refPhotoFaceIds,
-              confidenceThreshold
-            );
-
-          } catch (error) {
-            console.error(`Error processing search result:`, error.message);
-          }
-        }
-
-      } catch (error) {
-        console.error(`Error scanning with reference photo ${refPhoto.id}:`, error.message);
-      }
-    }
-  }
-
-  /**
    * Search Google Custom Search API for similar images
    * Requires: GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID
    */
@@ -260,39 +203,6 @@ class WebCrawlerService {
       return response.data.items || [];
     } catch (error) {
       console.error('Google Image Search error:', error.response?.data || error.message);
-      return [];
-    }
-  }
-
-  /**
-   * Search Bing Image Search API
-   * Requires: BING_SEARCH_API_KEY
-   */
-  async searchBingImages(imageUrl) {
-    const apiKey = process.env.BING_SEARCH_API_KEY;
-
-    if (!apiKey) {
-      console.warn('Bing Image Search not configured');
-      return [];
-    }
-
-    try {
-      const response = await axios.get('https://api.bing.microsoft.com/v7.0/images/search', {
-        headers: {
-          'Ocp-Apim-Subscription-Key': apiKey
-        },
-        params: {
-          q: 'person face',
-          count: 10,
-          imageType: 'Photo',
-          size: 'Large'
-        },
-        timeout: 15000
-      });
-
-      return response.data.value || [];
-    } catch (error) {
-      console.error('Bing Image Search error:', error.response?.data || error.message);
       return [];
     }
   }
