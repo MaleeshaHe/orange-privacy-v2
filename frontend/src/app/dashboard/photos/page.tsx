@@ -9,11 +9,13 @@ import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { Modal } from '@/components/ui/Modal';
 import { refPhotoAPI } from '@/lib/api';
-import { Upload, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Upload, Trash2, Eye, EyeOff, Image as ImageIcon } from 'lucide-react';
 
 interface RefPhoto {
   id: string;
-  photoUrl: string;
+  photoUrl?: string;
+  signedUrl?: string;
+  s3Url?: string;
   isActive: boolean;
   photoType: string;
   uploadedAt: string;
@@ -184,11 +186,26 @@ export default function PhotosPage() {
             {photos.map((photo) => (
               <Card key={photo.id} padding="none" className="overflow-hidden">
                 <div className="aspect-square relative bg-gray-100">
-                  <img
-                    src={photo.photoUrl}
-                    alt="Reference photo"
-                    className="w-full h-full object-cover"
-                  />
+                  {(photo.signedUrl || photo.s3Url || photo.photoUrl) ? (
+                    <img
+                      src={photo.signedUrl || photo.s3Url || photo.photoUrl}
+                      alt="Reference photo"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center bg-gray-200"><svg class="h-12 w-12 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p class="text-sm text-gray-500">Image unavailable</p></div>';
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200">
+                      <ImageIcon className="h-12 w-12 text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-500">No image URL</p>
+                    </div>
+                  )}
                   <div className="absolute top-2 right-2">
                     <Badge
                       variant={photo.isActive ? 'success' : 'default'}
