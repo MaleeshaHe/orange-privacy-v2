@@ -6,13 +6,20 @@ const { validate } = require('../middleware/validation.middleware');
 
 const router = express.Router();
 
-// All routes require authentication
+// OAuth routes (require authentication)
+router.get('/facebook/oauth', authenticate, socialMediaController.facebookOAuthInit);
+router.get('/facebook/callback', socialMediaController.facebookOAuthCallback);
+
+router.get('/instagram/oauth', authenticate, socialMediaController.instagramOAuthInit);
+router.get('/instagram/callback', socialMediaController.instagramOAuthCallback);
+
+// All other routes require authentication
 router.use(authenticate);
 
 // Get all connected social accounts
 router.get('/', socialMediaController.getSocialAccounts);
 
-// Connect Facebook account
+// Connect Facebook account (manual token - kept for backward compatibility)
 router.post(
   '/facebook/connect',
   [
@@ -23,7 +30,7 @@ router.post(
   socialMediaController.connectFacebook
 );
 
-// Connect Instagram account
+// Connect Instagram account (manual token - kept for backward compatibility)
 router.post(
   '/instagram/connect',
   [

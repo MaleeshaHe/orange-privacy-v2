@@ -82,6 +82,9 @@ export const socialMediaAPI = {
   getAll: () => api.get('/social-media'),
   connectFacebook: (data: any) => api.post('/social-media/facebook/connect', data),
   connectInstagram: (data: any) => api.post('/social-media/instagram/connect', data),
+  // OAuth flows
+  getFacebookOAuthUrl: () => api.get('/social-media/facebook/oauth'),
+  getInstagramOAuthUrl: () => api.get('/social-media/instagram/oauth'),
   sync: (accountId: string) => api.post(`/social-media/${accountId}/sync`),
   disconnect: (accountId: string) => api.post(`/social-media/${accountId}/disconnect`),
 };

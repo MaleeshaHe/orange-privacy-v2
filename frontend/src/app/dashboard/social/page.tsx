@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { DashboardLayout } from '@/components/dashboard/DashboardLayout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { socialMediaAPI } from '@/lib/api';
-import { Facebook, Instagram, RefreshCw, Unlink, CheckCircle, AlertCircle } from 'lucide-react';
+import { Facebook, Instagram, RefreshCw, Unlink, AlertCircle, Key } from 'lucide-react';
 
 interface SocialAccount {
   id: string;
@@ -21,18 +22,36 @@ interface SocialAccount {
 }
 
 export default function SocialPage() {
+  const searchParams = useSearchParams();
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [syncing, setSyncing] = useState<string | null>(null);
-  const [showConnectModal, setShowConnectModal] = useState<'facebook' | 'instagram' | null>(null);
+  const [showManualTokenModal, setShowManualTokenModal] = useState<'facebook' | 'instagram' | null>(null);
   const [accessToken, setAccessToken] = useState('');
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     fetchAccounts();
-  }, []);
+
+    // Check for OAuth callback messages from URL
+    const errorParam = searchParams?.get('error');
+    const successParam = searchParams?.get('success');
+
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam));
+      // Clear URL params
+      window.history.replaceState({}, '', '/dashboard/social');
+    }
+
+    if (successParam) {
+      setSuccess(decodeURIComponent(successParam));
+      // Clear URL params
+      window.history.replaceState({}, '', '/dashboard/social');
+      fetchAccounts(); // Refresh accounts list
+    }
+  }, [searchParams]);
 
   const fetchAccounts = async () => {
     try {
@@ -46,7 +65,48 @@ export default function SocialPage() {
     }
   };
 
-  const handleConnect = async (provider: 'facebook' | 'instagram') => {
+  const handleOAuthConnect = async (provider: 'facebook' | 'instagram') => {
+    try {
+      setError('');
+      setConnecting(true);
+
+      // Get OAuth URL from backend
+      const response = provider === 'facebook'
+        ? await socialMediaAPI.getFacebookOAuthUrl()
+        : await socialMediaAPI.getInstagramOAuthUrl();
+
+      const { authUrl } = response.data;
+
+      // Open OAuth popup
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+
+      const popup = window.open(
+        authUrl,
+        `${provider}OAuth`,
+        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes`
+      );
+
+      // Check if popup was blocked
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        setError('Popup was blocked. Please allow popups for this site and try again.');
+        setConnecting(false);
+        return;
+      }
+
+      // Note: The OAuth callback will redirect back to this page with success/error params
+      // The page will automatically refresh and show the new account
+      setSuccess('Redirecting to ' + (provider === 'facebook' ? 'Facebook' : 'Instagram') + '...');
+    } catch (err: any) {
+      setError(err.response?.data?.error || `Failed to initiate ${provider} OAuth`);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleManualTokenConnect = async (provider: 'facebook' | 'instagram') => {
     if (!accessToken.trim()) {
       setError('Please enter an access token');
       return;
@@ -63,7 +123,7 @@ export default function SocialPage() {
       }
 
       setSuccess(`${provider === 'facebook' ? 'Facebook' : 'Instagram'} account connected successfully!`);
-      setShowConnectModal(null);
+      setShowManualTokenModal(null);
       setAccessToken('');
       await fetchAccounts();
     } catch (err: any) {
@@ -140,29 +200,49 @@ export default function SocialPage() {
           Connect New Account
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <button
-            onClick={() => setShowConnectModal('facebook')}
-            className="flex items-center justify-center p-6 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors"
-          >
-            <Facebook className="h-8 w-8 text-blue-600 mr-3" />
-            <span className="text-lg font-medium text-gray-900">Connect Facebook</span>
-          </button>
-          <button
-            onClick={() => setShowConnectModal('instagram')}
-            className="flex items-center justify-center p-6 border-2 border-gray-200 rounded-lg hover:border-pink-500 hover:bg-pink-50 transition-colors"
-          >
-            <Instagram className="h-8 w-8 text-pink-600 mr-3" />
-            <span className="text-lg font-medium text-gray-900">Connect Instagram</span>
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={() => handleOAuthConnect('facebook')}
+              disabled={connecting}
+              className="flex items-center justify-center w-full p-6 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Facebook className="h-8 w-8 text-blue-600 mr-3" />
+              <span className="text-lg font-medium text-gray-900">Connect Facebook</span>
+            </button>
+            <button
+              onClick={() => setShowManualTokenModal('facebook')}
+              className="flex items-center justify-center w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <Key className="h-4 w-4 mr-1" />
+              Use Manual Token
+            </button>
+          </div>
+          <div className="space-y-2">
+            <button
+              onClick={() => handleOAuthConnect('instagram')}
+              disabled={connecting}
+              className="flex items-center justify-center w-full p-6 border-2 border-gray-200 rounded-lg hover:border-pink-500 hover:bg-pink-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Instagram className="h-8 w-8 text-pink-600 mr-3" />
+              <span className="text-lg font-medium text-gray-900">Connect Instagram</span>
+            </button>
+            <button
+              onClick={() => setShowManualTokenModal('instagram')}
+              className="flex items-center justify-center w-full px-3 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <Key className="h-4 w-4 mr-1" />
+              Use Manual Token
+            </button>
+          </div>
         </div>
       </Card>
 
-      {/* Connection Modal */}
-      {showConnectModal && (
+      {/* Manual Token Modal */}
+      {showManualTokenModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <Card className="max-w-md w-full">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">
-              Connect {showConnectModal === 'facebook' ? 'Facebook' : 'Instagram'}
+              Connect {showManualTokenModal === 'facebook' ? 'Facebook' : 'Instagram'} Manually
             </h3>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -177,7 +257,7 @@ export default function SocialPage() {
               />
               <p className="mt-2 text-xs text-gray-500">
                 Get your access token from{' '}
-                {showConnectModal === 'facebook' ? (
+                {showManualTokenModal === 'facebook' ? (
                   <a
                     href="https://developers.facebook.com/tools/explorer/"
                     target="_blank"
@@ -201,7 +281,7 @@ export default function SocialPage() {
             <div className="flex gap-3">
               <Button
                 variant="primary"
-                onClick={() => handleConnect(showConnectModal)}
+                onClick={() => handleManualTokenConnect(showManualTokenModal)}
                 isLoading={connecting}
                 className="flex-1"
               >
@@ -210,7 +290,7 @@ export default function SocialPage() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  setShowConnectModal(null);
+                  setShowManualTokenModal(null);
                   setAccessToken('');
                   setError('');
                 }}
@@ -321,15 +401,20 @@ export default function SocialPage() {
           <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
           <div>
             <h3 className="text-sm font-medium text-blue-900 mb-1">
-              How Social Media Scanning Works
+              How to Connect Your Account
             </h3>
             <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-              <li>Connect your Facebook or Instagram account using an access token</li>
-              <li>We sync your photos and photos you're tagged in</li>
-              <li>When you run a scan, we use AWS Rekognition to detect faces</li>
-              <li>You'll be notified of any matches found in your social media photos</li>
+              <li><strong>Recommended:</strong> Click "Connect Facebook/Instagram" button to use OAuth (secure and easy)</li>
+              <li><strong>Advanced:</strong> Use "Manual Token" if you already have an access token</li>
+              <li>OAuth will open a popup window - make sure popups are enabled</li>
+              <li>You'll be redirected to authorize OrangePrivacy to access your photos</li>
+              <li>After authorization, you'll be redirected back automatically</li>
               <li>You can disconnect your account at any time</li>
             </ul>
+            <p className="text-xs text-blue-700 mt-3">
+              <strong>Note:</strong> To use OAuth, you need to configure Facebook/Instagram app credentials in the backend .env file.
+              If OAuth is not configured, use the manual token option.
+            </p>
           </div>
         </div>
       </Card>
