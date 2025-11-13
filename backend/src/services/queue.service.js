@@ -47,7 +47,7 @@ scanQueue.process(async (job) => {
   const { scanJobId } = job.data;
 
   try {
-    console.log(`Processing scan job: ${scanJobId}`);
+    console.log(`\n🚀 STARTING SCAN JOB: ${scanJobId}`);
 
     // Get scan job from database
     const scanJob = await ScanJob.findByPk(scanJobId);
@@ -55,12 +55,18 @@ scanQueue.process(async (job) => {
       throw new Error('Scan job not found');
     }
 
+    console.log(`   User ID: ${scanJob.userId}`);
+    console.log(`   Scan Type: ${scanJob.scanType}`);
+    console.log(`   Confidence Threshold: ${scanJob.confidenceThreshold}%`);
+
     // Update status to processing
     await scanJob.update({
       status: 'processing',
       startedAt: new Date(),
       progress: 0
     });
+
+    console.log(`   Status updated to: processing\n`);
 
     // Get user's active reference photos
     const refPhotos = await RefPhoto.findAll({
@@ -141,6 +147,11 @@ scanQueue.process(async (job) => {
       where: { scanJobId: scanJob.id }
     });
 
+    console.log(`\n📊 SCAN COMPLETION SUMMARY:`);
+    console.log(`   Job ID: ${scanJobId}`);
+    console.log(`   Total Matches Found: ${totalMatches}`);
+    console.log(`   Saving to database...`);
+
     // Mark as completed
     await scanJob.update({
       status: 'completed',
@@ -150,7 +161,10 @@ scanQueue.process(async (job) => {
       totalImagesScanned: 0 // Would be actual count in production
     });
 
-    console.log(`Scan job ${scanJobId} completed successfully`);
+    console.log(`✅ Scan job ${scanJobId} completed successfully`);
+    console.log(`   Status: completed`);
+    console.log(`   Matches: ${totalMatches}`);
+    console.log(`   Results should now be visible in frontend\n`);
 
     return { success: true, scanJobId, totalMatches };
   } catch (error) {

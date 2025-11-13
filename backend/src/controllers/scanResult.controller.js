@@ -64,6 +64,11 @@ const getScanResults = async (req, res) => {
       ]
     });
 
+    console.log(`📤 Fetching results for scan job ${scanJobId}:`);
+    console.log(`   Total results found: ${results.count}`);
+    console.log(`   Returning ${results.rows.length} results (limit: ${limit}, offset: ${offset})`);
+    console.log(`   Scan status: ${scanJob.status}`);
+
     res.json({
       results: results.rows,
       total: results.count,
