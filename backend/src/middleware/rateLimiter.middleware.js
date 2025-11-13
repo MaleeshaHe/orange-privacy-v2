@@ -104,6 +104,22 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Permissive rate limit for polling endpoints (GET requests for status checks)
+// Frontend polls every 10 seconds, so we need to allow more frequent requests
+const pollingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // 500 requests per 15 minutes per IP (allows ~33 req/min or ~3 sec intervals)
+  message: {
+    error: 'Too many polling requests',
+    message: 'Please slow down your refresh rate',
+    retryAfter: 15
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Only apply to GET requests
+  skip: (req) => req.method !== 'GET',
+});
+
 module.exports = {
   loginLimiter,
   registerLimiter,
@@ -111,5 +127,6 @@ module.exports = {
   oauthLimiter,
   uploadLimiter,
   scanLimiter,
-  apiLimiter
+  apiLimiter,
+  pollingLimiter
 };

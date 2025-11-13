@@ -3,7 +3,7 @@ const { body, query } = require('express-validator');
 const scanJobController = require('../controllers/scanJob.controller');
 const { authenticate, requireBiometricConsent } = require('../middleware/auth.middleware');
 const { validate } = require('../middleware/validation.middleware');
-const { scanLimiter } = require('../middleware/rateLimiter.middleware');
+const { scanLimiter, pollingLimiter } = require('../middleware/rateLimiter.middleware');
 
 const router = express.Router();
 
@@ -23,9 +23,10 @@ router.post(
   scanJobController.createScanJob
 );
 
-// Get all scan jobs for the user
+// Get all scan jobs for the user (with permissive polling rate limit)
 router.get(
   '/',
+  pollingLimiter,
   [
     query('status').optional().isIn(['queued', 'processing', 'completed', 'failed', 'cancelled']),
     query('limit').optional().isInt({ min: 1, max: 100 }),
@@ -35,11 +36,11 @@ router.get(
   scanJobController.getScanJobs
 );
 
-// Get scan job statistics
-router.get('/stats', scanJobController.getScanJobStats);
+// Get scan job statistics (with permissive polling rate limit)
+router.get('/stats', pollingLimiter, scanJobController.getScanJobStats);
 
-// Get a specific scan job
-router.get('/:jobId', scanJobController.getScanJobById);
+// Get a specific scan job (with permissive polling rate limit)
+router.get('/:jobId', pollingLimiter, scanJobController.getScanJobById);
 
 // Cancel a scan job
 router.post('/:jobId/cancel', scanJobController.cancelScanJob);
