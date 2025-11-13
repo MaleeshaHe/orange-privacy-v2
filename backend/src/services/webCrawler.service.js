@@ -200,78 +200,91 @@ class WebCrawlerService {
       }
     }
 
-    console.log(`\n🔄 Processing ${refPhotos.length} reference photo(s)...\n`);
+    // ==========================================
+    // PHASE 1: Fetch Images from Web Search
+    // ==========================================
+    console.log('\n╔═══════════════════════════════════════════╗');
+    console.log('║  PHASE 1: Fetching Images from Web       ║');
+    console.log('╚═══════════════════════════════════════════╝\n');
 
-    let totalImagesFound = 0;
+    await scanJob.update({ progress: 30 });
 
-    for (let i = 0; i < refPhotos.length; i++) {
-      const refPhoto = refPhotos[i];
+    // Search for images using Google Custom Search
+    const searchResults = await this.searchGoogleImages(null, searchQuery);
 
+    if (searchResults.length === 0) {
+      console.log('⚠️  No images found from web search');
+      console.log('   Check your search query or Google API configuration\n');
+      return;
+    }
+
+    console.log(`✅ Phase 1 Complete: ${searchResults.length} images collected from web\n`);
+
+    // ==========================================
+    // PHASE 2: Compare Images with Reference Photos
+    // ==========================================
+    console.log('╔═══════════════════════════════════════════╗');
+    console.log('║  PHASE 2: Comparing with Reference Photos║');
+    console.log('╚═══════════════════════════════════════════╝\n');
+
+    console.log(`📷 Reference Photos: ${refPhotos.length}`);
+    console.log(`🖼️  Web Images: ${searchResults.length}`);
+    console.log(`🎯 Confidence Threshold: ${confidenceThreshold}%\n`);
+
+    await scanJob.update({ progress: 40 });
+
+    let processedCount = 0;
+    let matchCount = 0;
+
+    // Process each found image
+    for (let j = 0; j < searchResults.length; j++) {
       try {
+        const searchResult = searchResults[j];
+        processedCount++;
+
         console.log(`─────────────────────────────────────`);
-        console.log(`📷 Reference Photo ${i + 1}/${refPhotos.length}`);
-        console.log(`   ID: ${refPhoto.id}`);
-        console.log(`   Face ID: ${refPhoto.rekognitionFaceId || 'Not indexed'}`);
-        console.log(`─────────────────────────────────────`);
+        console.log(`[${j + 1}/${searchResults.length}] Analyzing Image...`);
 
-        // Update progress
-        await scanJob.update({
-          progress: Math.min(90, scanJob.progress + 10)
-        });
+        // Extract image URL from search result
+        const imageUrl = searchResult.link;
+        const sourceUrl = searchResult.image?.contextLink || searchResult.link;
 
-        // Search for similar images using Google Custom Search
-        const searchResults = await this.searchGoogleImages(refPhoto.signedUrl || refPhoto.s3Url, searchQuery);
-
-        if (searchResults.length === 0) {
-          console.log(`   ⚠️  No images found for this reference photo\n`);
+        if (!imageUrl) {
+          console.log(`✗ No image URL found, skipping\n`);
           continue;
         }
 
-        totalImagesFound += searchResults.length;
-        console.log(`   📦 Processing ${searchResults.length} found images...\n`);
+        console.log(`Source: ${sourceUrl.substring(0, 60)}...`);
 
-        // Process each found image
-        for (let j = 0; j < searchResults.length; j++) {
-          try {
-            const searchResult = searchResults[j];
-            console.log(`   [${j + 1}/${searchResults.length}] Processing image...`);
+        // Download and analyze the image (compares with ALL reference photos)
+        const foundMatch = await this.analyzeWebImage(
+          imageUrl,
+          sourceUrl,
+          scanJobId,
+          refPhotoFaceIds,
+          confidenceThreshold
+        );
 
-            // Extract image URL from search result
-            const imageUrl = searchResult.link;
-            const sourceUrl = searchResult.image?.contextLink || searchResult.link;
-
-            if (!imageUrl) {
-              console.log(`   ✗ No image URL found, skipping\n`);
-              continue;
-            }
-
-            console.log(`   Source: ${sourceUrl.substring(0, 60)}...`);
-
-            // Download and analyze the image
-            await this.analyzeWebImage(
-              imageUrl,
-              sourceUrl,
-              scanJobId,
-              refPhotoFaceIds,
-              confidenceThreshold
-            );
-
-            console.log(''); // Empty line for readability
-
-          } catch (error) {
-            console.error(`   ❌ Error processing search result: ${error.message}\n`);
-          }
+        if (foundMatch) {
+          matchCount++;
         }
 
+        // Update progress
+        const progress = 40 + Math.floor((processedCount / searchResults.length) * 50);
+        await scanJob.update({ progress: Math.min(90, progress) });
+
+        console.log(''); // Empty line for readability
+
       } catch (error) {
-        console.error(`❌ Error scanning with reference photo ${refPhoto.id}: ${error.message}\n`);
+        console.error(`❌ Error processing image: ${error.message}\n`);
       }
     }
 
     console.log(`\n═══════════════════════════════════════`);
-    console.log(`📊 Scan Summary:`);
-    console.log(`   Total images found: ${totalImagesFound}`);
-    console.log(`   Total images scanned: ${scanJob.totalImagesScanned}`);
+    console.log(`📊 Phase 2 Complete - Scan Summary:`);
+    console.log(`   Web images found: ${searchResults.length}`);
+    console.log(`   Images processed: ${processedCount}`);
+    console.log(`   Matches found: ${matchCount}`);
     console.log(`═══════════════════════════════════════\n`);
   }
 
@@ -284,6 +297,7 @@ class WebCrawlerService {
   async searchGoogleImages(imageUrl, searchQuery = 'person face') {
     const apiKey = process.env.GOOGLE_API_KEY;
     const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+    const TARGET_IMAGES = 20; // Target number of images to fetch
 
     console.log('\n🔎 Attempting Google Custom Search API connection...');
 
@@ -295,30 +309,64 @@ class WebCrawlerService {
     }
 
     try {
-      console.log('📡 Sending request to Google Custom Search API...');
+      console.log('📡 Fetching images from Google Custom Search API...');
       console.log(`   API Key: ${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`);
       console.log(`   Search Engine ID: ${searchEngineId}`);
       console.log(`   Query: "${searchQuery}"`);
+      console.log(`   Target: ${TARGET_IMAGES} images`);
 
-      const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-        params: {
-          key: apiKey,
-          cx: searchEngineId,
-          searchType: 'image',
-          q: searchQuery,
-          imgSize: 'large',
-          num: 10
-        },
-        timeout: 15000
-      });
+      const allImages = [];
 
-      const itemCount = response.data.items?.length || 0;
-      console.log(`✅ Google API Response received!`);
-      console.log(`   Status: ${response.status}`);
-      console.log(`   Images found: ${itemCount}`);
-      console.log(`   Queries used: ${response.data.queries?.request?.[0]?.count || 0}`);
+      // Google API limit is 10 per request, so we make 2 requests to get ~20 images
+      const requests = [
+        { start: 1, num: 10 },  // First 10 images
+        { start: 11, num: 10 }  // Next 10 images
+      ];
 
-      return response.data.items || [];
+      for (let i = 0; i < requests.length; i++) {
+        const { start, num } = requests[i];
+
+        console.log(`   → Request ${i + 1}/2: Fetching images ${start}-${start + num - 1}...`);
+
+        try {
+          const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
+            params: {
+              key: apiKey,
+              cx: searchEngineId,
+              searchType: 'image',
+              q: searchQuery,
+              imgSize: 'large',
+              num: num,
+              start: start
+            },
+            timeout: 15000
+          });
+
+          const items = response.data.items || [];
+          allImages.push(...items);
+          console.log(`   ✓ Received ${items.length} images`);
+
+          // Small delay between requests to avoid rate limiting
+          if (i < requests.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+
+        } catch (error) {
+          // If second request fails, continue with images from first request
+          console.warn(`   ⚠️  Request ${i + 1} failed: ${error.message}`);
+          if (error.response?.status === 429) {
+            console.warn(`   → Rate limit reached, using ${allImages.length} images collected so far`);
+            break;
+          }
+        }
+      }
+
+      console.log(`✅ Google API fetching complete!`);
+      console.log(`   Total images collected: ${allImages.length}`);
+      console.log(`   Ready to compare with reference photos\n`);
+
+      return allImages;
+
     } catch (error) {
       console.error('❌ Google Image Search API Error:');
       if (error.response) {
@@ -346,14 +394,16 @@ class WebCrawlerService {
 
   /**
    * Analyze a web image for face matches using AWS Rekognition
+   * @returns {boolean} - True if a match was found, false otherwise
    */
   async analyzeWebImage(imageUrl, sourceUrl, scanJobId, refPhotoFaceIds, confidenceThreshold) {
     let s3Key = null;
+    let foundMatch = false;
 
     try {
       const scanJob = await ScanJob.findByPk(scanJobId);
 
-      console.log(`   📥 Downloading image: ${imageUrl.substring(0, 60)}...`);
+      console.log(`📥 Downloading image: ${imageUrl.substring(0, 60)}...`);
 
       // Download the image
       const response = await axios.get(imageUrl, {
@@ -365,11 +415,11 @@ class WebCrawlerService {
         }
       });
 
-      console.log(`   ✓ Downloaded (${(response.data.length / 1024).toFixed(2)} KB)`);
+      console.log(`✓ Downloaded (${(response.data.length / 1024).toFixed(2)} KB)`);
 
       // Upload to S3 temporarily
       s3Key = `temp/web-scan/${uuidv4()}.jpg`;
-      console.log(`   ☁️  Uploading to S3: ${s3Key}`);
+      console.log(`☁️  Uploading to S3: ${s3Key}`);
 
       await awsService.uploadToS3(
         {
@@ -380,17 +430,17 @@ class WebCrawlerService {
         false
       );
 
-      console.log(`   🔍 Searching for faces with Rekognition...`);
+      console.log(`🔍 Comparing with reference photos using Rekognition...`);
 
       // Search for faces using Rekognition
       const searchResult = await awsService.searchFacesByImage(s3Key, confidenceThreshold);
 
-      console.log(`   → Found ${searchResult.matches?.length || 0} face matches`);
+      console.log(`→ Found ${searchResult.matches?.length || 0} face(s) in image`);
 
       // Check if any matches are in our reference photos
       if (searchResult.matches && searchResult.matches.length > 0) {
         for (const match of searchResult.matches) {
-          console.log(`     Checking match: faceId=${match.faceId}, similarity=${match.similarity}%`);
+          console.log(`  Checking: faceId=${match.faceId.substring(0, 8)}..., similarity=${match.similarity.toFixed(1)}%`);
 
           if (refPhotoFaceIds.includes(match.faceId)) {
             // Found a match! Create scan result
@@ -411,18 +461,18 @@ class WebCrawlerService {
               }
             });
 
-            console.log(`   ✅ MATCH FOUND! URL: ${sourceUrl.substring(0, 50)}..., Confidence: ${match.similarity}%`);
+            console.log(`✅ MATCH! Confidence: ${match.similarity.toFixed(1)}% | URL: ${sourceUrl.substring(0, 50)}...`);
+            foundMatch = true;
           } else {
-            console.log(`     ✗ Face not in reference photos (faceId: ${match.faceId})`);
+            console.log(`  ✗ Different person (not in reference photos)`);
           }
         }
       } else {
-        console.log(`   ✗ No face matches found in this image`);
+        console.log(`✗ No faces detected in image`);
       }
 
       // Clean up temporary S3 file
       if (s3Key) {
-        console.log(`   🗑️  Cleaning up S3: ${s3Key}`);
         await awsService.deleteFromS3(s3Key);
       }
 
@@ -431,19 +481,22 @@ class WebCrawlerService {
         totalImagesScanned: scanJob.totalImagesScanned + 1
       });
 
+      return foundMatch;
+
     } catch (error) {
-      console.error(`   ❌ Error analyzing image: ${error.message}`);
+      console.error(`❌ Error: ${error.message}`);
 
       // Clean up S3 file on error
       if (s3Key) {
         try {
           await awsService.deleteFromS3(s3Key);
         } catch (cleanupError) {
-          console.error(`   Failed to cleanup S3 file: ${cleanupError.message}`);
+          console.error(`Failed to cleanup S3: ${cleanupError.message}`);
         }
       }
 
       // Don't throw - continue with other images
+      return false;
     }
   }
 }
