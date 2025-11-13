@@ -1,20 +1,8 @@
 const { SocialAccount, OAuthToken } = require('../models');
 const socialMediaService = require('../services/socialMedia.service');
+const oauthStateService = require('../services/oauthState.service');
 const axios = require('axios');
 const crypto = require('crypto');
-
-// Store OAuth state temporarily (in production, use Redis)
-const oauthStateStore = new Map();
-
-// Clean up expired states periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of oauthStateStore.entries()) {
-    if (value.expiresAt < now) {
-      oauthStateStore.delete(key);
-    }
-  }
-}, 5 * 60 * 1000); // Clean up every 5 minutes
 
 const getSocialAccounts = async (req, res) => {
   try {
@@ -138,11 +126,11 @@ const facebookOAuthInit = async (req, res) => {
     // Generate state for CSRF protection
     const state = crypto.randomBytes(32).toString('hex');
 
-    // Store state with user ID (expires in 10 minutes)
-    oauthStateStore.set(state, {
+    // Store state in Redis with user ID (expires in 10 minutes)
+    await oauthStateService.set(state, {
       userId: req.user.id,
-      expiresAt: Date.now() + 10 * 60 * 1000
-    });
+      provider: 'facebook'
+    }, 10 * 60); // TTL in seconds
 
     const params = new URLSearchParams({
       client_id: process.env.FACEBOOK_APP_ID,
@@ -185,8 +173,8 @@ const facebookOAuthCallback = async (req, res) => {
       );
     }
 
-    // Verify state to prevent CSRF attacks
-    const stateData = oauthStateStore.get(state);
+    // Verify state to prevent CSRF attacks (automatically deletes after retrieval)
+    const stateData = await oauthStateService.getAndDelete(state);
     if (!stateData) {
       return res.redirect(
         `${process.env.FRONTEND_URL}/dashboard/social?error=${encodeURIComponent(
@@ -194,19 +182,6 @@ const facebookOAuthCallback = async (req, res) => {
         )}`
       );
     }
-
-    // Check if state has expired
-    if (stateData.expiresAt < Date.now()) {
-      oauthStateStore.delete(state);
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/dashboard/social?error=${encodeURIComponent(
-          'Authorization request expired. Please try again.'
-        )}`
-      );
-    }
-
-    // Clean up used state
-    oauthStateStore.delete(state);
 
     // Exchange authorization code for access token
     const tokenResponse = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
@@ -266,11 +241,11 @@ const instagramOAuthInit = async (req, res) => {
     // Generate state for CSRF protection
     const state = crypto.randomBytes(32).toString('hex');
 
-    // Store state with user ID (expires in 10 minutes)
-    oauthStateStore.set(state, {
+    // Store state in Redis with user ID (expires in 10 minutes)
+    await oauthStateService.set(state, {
       userId: req.user.id,
-      expiresAt: Date.now() + 10 * 60 * 1000
-    });
+      provider: 'instagram'
+    }, 10 * 60); // TTL in seconds
 
     const params = new URLSearchParams({
       client_id: process.env.INSTAGRAM_CLIENT_ID,
@@ -313,8 +288,8 @@ const instagramOAuthCallback = async (req, res) => {
       );
     }
 
-    // Verify state to prevent CSRF attacks
-    const stateData = oauthStateStore.get(state);
+    // Verify state to prevent CSRF attacks (automatically deletes after retrieval)
+    const stateData = await oauthStateService.getAndDelete(state);
     if (!stateData) {
       return res.redirect(
         `${process.env.FRONTEND_URL}/dashboard/social?error=${encodeURIComponent(
@@ -322,19 +297,6 @@ const instagramOAuthCallback = async (req, res) => {
         )}`
       );
     }
-
-    // Check if state has expired
-    if (stateData.expiresAt < Date.now()) {
-      oauthStateStore.delete(state);
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/dashboard/social?error=${encodeURIComponent(
-          'Authorization request expired. Please try again.'
-        )}`
-      );
-    }
-
-    // Clean up used state
-    oauthStateStore.delete(state);
 
     // Exchange authorization code for access token
     const tokenResponse = await axios.post(
