@@ -42,6 +42,14 @@ export default function ResultsPageContent() {
   const [selectedResult, setSelectedResult] = useState<ScanResult | null>(null);
   const [imageModal, setImageModal] = useState(false);
 
+  // Filters
+  const [filters, setFilters] = useState({
+    confidence: 'all', // all, high (>=90), medium (75-89), low (<75)
+    sourceType: 'all', // all, web, social_media
+    confirmationStatus: 'all' // all, confirmed, rejected, pending
+  });
+  const [filteredResults, setFilteredResults] = useState<ScanResult[]>([]);
+
   useEffect(() => {
     fetchScans();
   }, []);
@@ -51,6 +59,41 @@ export default function ResultsPageContent() {
       fetchResults(selectedScan);
     }
   }, [selectedScan]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [results, filters]);
+
+  const applyFilters = () => {
+    let filtered = [...results];
+
+    // Filter by confidence
+    if (filters.confidence !== 'all') {
+      filtered = filtered.filter(r => {
+        if (filters.confidence === 'high') return r.confidence >= 90;
+        if (filters.confidence === 'medium') return r.confidence >= 75 && r.confidence < 90;
+        if (filters.confidence === 'low') return r.confidence < 75;
+        return true;
+      });
+    }
+
+    // Filter by source type
+    if (filters.sourceType !== 'all') {
+      filtered = filtered.filter(r => r.sourceType === filters.sourceType);
+    }
+
+    // Filter by confirmation status
+    if (filters.confirmationStatus !== 'all') {
+      filtered = filtered.filter(r => {
+        if (filters.confirmationStatus === 'confirmed') return r.isConfirmedByUser === true;
+        if (filters.confirmationStatus === 'rejected') return r.isConfirmedByUser === false;
+        if (filters.confirmationStatus === 'pending') return r.isConfirmedByUser === undefined || r.isConfirmedByUser === null;
+        return true;
+      });
+    }
+
+    setFilteredResults(filtered);
+  };
 
   const fetchScans = async () => {
     try {
@@ -147,26 +190,99 @@ export default function ResultsPageContent() {
 
       {/* Stats */}
       {selectedScan && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <Card>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Matches</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalMatches}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalMatches}</p>
               </div>
-              <ImageIcon className="h-10 w-10 text-blue-500" />
+              <ImageIcon className="h-8 w-8 text-blue-500" />
             </div>
           </Card>
           <Card>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Confirmed Matches</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.confirmedMatches}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.confirmedMatches}</p>
               </div>
-              <ThumbsUp className="h-10 w-10 text-green-500" />
+              <ThumbsUp className="h-8 w-8 text-green-500" />
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Filtered Results</p>
+                <p className="text-2xl font-bold text-gray-900">{filteredResults.length}</p>
+              </div>
+              <ImageIcon className="h-8 w-8 text-orange-500" />
             </div>
           </Card>
         </div>
+      )}
+
+      {/* Filters */}
+      {selectedScan && results.length > 0 && (
+        <Card className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Filters</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Confidence Level
+              </label>
+              <select
+                value={filters.confidence}
+                onChange={(e) => setFilters({ ...filters, confidence: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="all">All Confidence Levels</option>
+                <option value="high">High (≥90%)</option>
+                <option value="medium">Medium (75-89%)</option>
+                <option value="low">Low (&lt;75%)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Source Type
+              </label>
+              <select
+                value={filters.sourceType}
+                onChange={(e) => setFilters({ ...filters, sourceType: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="all">All Sources</option>
+                <option value="web">Web</option>
+                <option value="social_media">Social Media</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Status
+              </label>
+              <select
+                value={filters.confirmationStatus}
+                onChange={(e) => setFilters({ ...filters, confirmationStatus: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="pending">Pending Review</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+          {(filters.confidence !== 'all' || filters.sourceType !== 'all' || filters.confirmationStatus !== 'all') && (
+            <div className="mt-4">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setFilters({ confidence: 'all', sourceType: 'all', confirmationStatus: 'all' })}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          )}
+        </Card>
       )}
 
       {/* Results Grid */}
@@ -184,112 +300,130 @@ export default function ResultsPageContent() {
         <Card className="text-center py-12">
           <p className="text-gray-600">No matches found in this scan.</p>
         </Card>
+      ) : filteredResults.length === 0 ? (
+        <Card className="text-center py-12">
+          <p className="text-gray-600">No results match the selected filters.</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setFilters({ confidence: 'all', sourceType: 'all', confirmationStatus: 'all' })}
+            className="mt-4"
+          >
+            Clear Filters
+          </Button>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {results.map((result) => (
-            <Card key={result.id} padding="none">
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <Badge variant="info" size="sm">
-                      {result.sourceType}
-                    </Badge>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredResults.map((result) => (
+            <Card key={result.id} padding="none" className="overflow-hidden hover:shadow-lg transition-shadow">
+              <div
+                className="aspect-square relative bg-gray-100 cursor-pointer group"
+                onClick={() => {
+                  setSelectedResult(result);
+                  setImageModal(true);
+                }}
+              >
+                {(result.imageUrl || result.thumbnailUrl) ? (
+                  <img
+                    src={result.imageUrl || result.thumbnailUrl}
+                    alt="Match"
+                    className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        parent.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center bg-gray-200"><svg class="h-10 w-10 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p class="text-xs text-gray-500">Image unavailable</p></div>';
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200">
+                    <ImageIcon className="h-10 w-10 text-gray-400 mb-2" />
+                    <p className="text-xs text-gray-500">No image</p>
                   </div>
+                )}
+                <div className="absolute top-2 left-2">
+                  <Badge variant="info" size="sm">
+                    {result.sourceType === 'social_media' ? 'Social' : 'Web'}
+                  </Badge>
+                </div>
+                <div className="absolute top-2 right-2">
                   <span
-                    className={`text-2xl font-bold ${getConfidenceColor(result.confidence)}`}
+                    className={`inline-block px-2 py-1 text-sm font-bold rounded ${
+                      result.confidence >= 90
+                        ? 'bg-green-100 text-green-800'
+                        : result.confidence >= 75
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-orange-100 text-orange-800'
+                    }`}
                   >
                     {result.confidence}%
                   </span>
                 </div>
-
-                <div
-                  className="aspect-video relative bg-gray-100 rounded-lg overflow-hidden mb-4 cursor-pointer"
-                  onClick={() => {
-                    setSelectedResult(result);
-                    setImageModal(true);
-                  }}
-                >
-                  {(result.imageUrl || result.thumbnailUrl) ? (
-                    <img
-                      src={result.imageUrl || result.thumbnailUrl}
-                      alt="Match"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        target.style.display = 'none';
-                        const parent = target.parentElement;
-                        if (parent) {
-                          parent.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center bg-gray-200"><svg class="h-12 w-12 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><p class="text-sm text-gray-500">Image unavailable</p></div>';
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-200">
-                      <ImageIcon className="h-12 w-12 text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-500">No image URL</p>
+                {result.isConfirmedByUser !== undefined && (
+                  <div className="absolute bottom-2 left-2 right-2">
+                    <div
+                      className={`text-xs font-medium px-2 py-1 rounded text-center ${
+                        result.isConfirmedByUser
+                          ? 'bg-green-500 text-white'
+                          : 'bg-red-500 text-white'
+                      }`}
+                    >
+                      {result.isConfirmedByUser ? '✓ Confirmed' : '✗ Rejected'}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+              </div>
 
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p className="mb-1">
-                      <span className="font-medium">Source:</span>
-                    </p>
+              <div className="p-3">
+
+                <div className="space-y-2">
+                  <div className="text-xs text-gray-600">
                     <a
                       href={result.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                      className="text-orange-600 hover:text-orange-700 flex items-center gap-1 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <span className="truncate">{result.sourceUrl}</span>
-                      <ExternalLink className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate flex-1">View Source</span>
+                      <ExternalLink className="h-3 w-3 flex-shrink-0" />
                     </a>
                   </div>
 
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Detected:</span>{' '}
-                    {new Date(result.createdAt).toLocaleString()}
+                  <div className="text-xs text-gray-500">
+                    {new Date(result.createdAt).toLocaleDateString()}
                   </div>
 
-                  {result.isConfirmedByUser !== undefined ? (
-                    <div
-                      className={`p-3 rounded-lg ${
-                        result.isConfirmedByUser
-                          ? 'bg-green-50 border border-green-200'
-                          : 'bg-red-50 border border-red-200'
-                      }`}
-                    >
-                      <p
-                        className={`text-sm font-medium ${
-                          result.isConfirmedByUser ? 'text-green-800' : 'text-red-800'
-                        }`}
-                      >
-                        {result.isConfirmedByUser ? 'Confirmed Match' : 'Rejected Match'}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
+                  {result.isConfirmedByUser === undefined || result.isConfirmedByUser === null ? (
+                    <div className="flex gap-2 pt-2">
                       <Button
                         size="sm"
                         variant="primary"
-                        onClick={() => handleConfirmation(result.id, true)}
-                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleConfirmation(result.id, true);
+                        }}
+                        className="flex-1 text-xs py-1"
                       >
-                        <ThumbsUp className="h-4 w-4 mr-1" />
+                        <ThumbsUp className="h-3 w-3 mr-1" />
                         Confirm
                       </Button>
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => handleConfirmation(result.id, false)}
-                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleConfirmation(result.id, false);
+                        }}
+                        className="flex-1 text-xs py-1"
                       >
-                        <ThumbsDown className="h-4 w-4 mr-1" />
+                        <ThumbsDown className="h-3 w-3 mr-1" />
                         Reject
                       </Button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </Card>
