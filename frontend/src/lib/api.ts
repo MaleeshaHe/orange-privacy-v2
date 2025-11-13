@@ -57,6 +57,7 @@ export const refPhotoAPI = {
   }),
   delete: (photoId: string) => api.delete(`/ref-photos/${photoId}`),
   deactivate: (photoId: string) => api.patch(`/ref-photos/${photoId}/deactivate`),
+  activate: (photoId: string) => api.patch(`/ref-photos/${photoId}/activate`),
 };
 
 // Scan Jobs API

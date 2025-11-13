@@ -31,4 +31,7 @@ router.delete('/:photoId', refPhotoController.deleteRefPhoto);
 // Deactivate a reference photo (keep for history)
 router.patch('/:photoId/deactivate', refPhotoController.deactivateRefPhoto);
 
+// Activate a reference photo
+router.patch('/:photoId/activate', refPhotoController.activateRefPhoto);
+
 module.exports = router;

@@ -97,14 +97,13 @@ export default function PhotosPage() {
       if (photo.isActive) {
         await refPhotoAPI.deactivate(photo.id);
       } else {
-        // You might need to add an activate endpoint
-        await refPhotoAPI.deactivate(photo.id);
+        await refPhotoAPI.activate(photo.id);
       }
       setSuccess(`Photo ${photo.isActive ? 'deactivated' : 'activated'}`);
       fetchPhotos();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError('Failed to update photo status');
+      setError(err.response?.data?.error || 'Failed to update photo status');
     }
   };
 

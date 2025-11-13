@@ -191,9 +191,47 @@ const deactivateRefPhoto = async (req, res) => {
   }
 };
 
+const activateRefPhoto = async (req, res) => {
+  try {
+    const { photoId } = req.params;
+
+    const refPhoto = await RefPhoto.findOne({
+      where: { id: photoId, userId: req.user.id }
+    });
+
+    if (!refPhoto) {
+      return res.status(404).json({ error: 'Reference photo not found' });
+    }
+
+    // Check if user has reached max active photos
+    const activePhotos = await RefPhoto.count({
+      where: { userId: req.user.id, isActive: true }
+    });
+
+    const maxPhotos = parseInt(process.env.MAX_REFERENCE_PHOTOS || '3');
+    if (activePhotos >= maxPhotos) {
+      return res.status(400).json({
+        error: 'Maximum active reference photos reached',
+        message: `You can only have up to ${maxPhotos} active reference photos. Deactivate another photo first.`
+      });
+    }
+
+    await refPhoto.update({ isActive: true });
+
+    res.json({
+      message: 'Reference photo activated successfully',
+      refPhoto: refPhoto.toJSON()
+    });
+  } catch (error) {
+    console.error('Activate reference photo error:', error);
+    res.status(500).json({ error: 'Failed to activate reference photo' });
+  }
+};
+
 module.exports = {
   uploadRefPhoto,
   getRefPhotos,
   deleteRefPhoto,
-  deactivateRefPhoto
+  deactivateRefPhoto,
+  activateRefPhoto
 };
